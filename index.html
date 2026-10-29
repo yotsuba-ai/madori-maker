@@ -226,6 +226,9 @@ kbd{font:11px ui-monospace,monospace;background:#F0F2F5;border:1px solid var(--l
       <div id="openSel" class="selbox" style="display:none">
       <h3 id="openSelName">選択中</h3>
       <label class="row">幅 <span><input type="number" id="openW" min="200" max="6000" step="10"> mm</span></label>
+      <div id="openNBox"><h3>枚数</h3><div class="seg" id="openNSeg"></div></div>
+      <label class="row" id="openShRow"><span><input type="checkbox" id="openSh"> シャッター・雨戸（外側）</span></label>
+      <label class="row" id="openGrRow"><span><input type="checkbox" id="openGr"> 面格子（外側）</span></label>
       <div class="stack">
         <button id="openFlip">向きを変える</button>
         <button id="openDel" class="danger">壁に戻す</button>
@@ -321,22 +324,33 @@ const ROOM_PRESETS = [
 ];
 // 建具の型：flips = 再クリックで巡回する向きの数、w = クリック配置時の標準幅 mm
 // id は保存データに入るので変えない（door / slide / open / window は旧版から引き継ぎ）
+// panels = 選べる枚数（先頭が標準）、opts = 窓に付けられるオプション（sh シャッター・雨戸 / gr 面格子）
 const OPEN = {
-  door:    {name:'片開き',   kind:'door', flips:4, w:780},
-  double:  {name:'両開き',   kind:'door', flips:2, w:1600},
-  parent:  {name:'親子',     kind:'door', flips:4, w:1200},
-  slide1:  {name:'片引き戸', kind:'door', flips:4, w:800},
-  slide:   {name:'引違い戸', kind:'door', flips:2, w:1640},
-  pocket:  {name:'引込み戸', kind:'door', flips:2, w:800},
-  fold:    {name:'折れ戸',   kind:'door', flips:2, w:800},
-  open:    {name:'開口',     kind:'door', flips:1, w:1640},
-  window:  {name:'引違い窓', kind:'win',  flips:1, w:1690},
-  winfloor:{name:'掃き出し窓',kind:'win', flips:2, w:1690},
-  fix:     {name:'FIX窓',    kind:'win',  flips:1, w:600},
-  casement:{name:'片開き窓', kind:'win',  flips:4, w:600},
-  bay:     {name:'出窓',     kind:'win',  flips:2, w:1690},
-  small:   {name:'小窓',     kind:'win',  flips:1, w:400},
+  door:    {name:'片開き',     kind:'door', flips:4, w:780},
+  double:  {name:'両開き',     kind:'door', flips:2, w:1600},
+  parent:  {name:'親子',       kind:'door', flips:4, w:1200},
+  slide1:  {name:'片引き戸',   kind:'door', flips:4, w:800,  panels:[1,2,3]},
+  slide:   {name:'引違い戸',   kind:'door', flips:2, w:1640, panels:[2,3,4]},
+  slide2:  {name:'両引き戸',   kind:'door', flips:2, w:1640, panels:[2,4]},
+  pocket:  {name:'引込み戸',   kind:'door', flips:2, w:800,  panels:[1,2]},
+  outset:  {name:'アウトセット',kind:'door', flips:4, w:800},
+  fold:    {name:'折れ戸',     kind:'door', flips:2, w:800,  panels:[2,4,6]},
+  open:    {name:'開口',       kind:'door', flips:1, w:1640},
+  window:  {name:'引違い窓',   kind:'win',  flips:2, w:1690, panels:[2,3,4], opts:['sh','gr']},
+  winfloor:{name:'掃き出し窓', kind:'win',  flips:2, w:1690, panels:[2,3,4], opts:['sh','gr']},
+  slidewin:{name:'片引き窓',   kind:'win',  flips:4, w:1690, opts:['sh','gr']},
+  fix:     {name:'FIX窓',      kind:'win',  flips:2, w:600,  opts:['gr']},
+  hung:    {name:'上げ下げ窓', kind:'win',  flips:2, w:740,  opts:['gr']},
+  casement:{name:'片開き窓',   kind:'win',  flips:4, w:600,  opts:['gr']},
+  awning:  {name:'すべり出し窓',kind:'win', flips:4, w:600,  opts:['gr']},
+  louver:  {name:'ルーバー窓', kind:'win',  flips:2, w:400,  opts:['gr']},
+  bay:     {name:'出窓',       kind:'win',  flips:2, w:1690},
+  small:   {name:'小窓',       kind:'win',  flips:2, w:400,  opts:['gr']},
 };
+// 建具の枚数（指定が無ければ型の標準。折れ戸だけは幅から自動）
+const openPanels=o=>{ const d=OPEN[o.t]; return (o.n&&d&&d.panels&&d.panels.includes(o.n))?o.n:(d&&d.panels?d.panels[0]:1); };
+const openPref={};   // 型ごとに、最後に選んだ枚数（次に置くときに使う）
+const newOpening=(t,f)=>{ const o={t,f:f||0}; if(openPref[t]) o.n=openPref[t]; return o; };
 // ===== 設備・家具 =====
 // FIX[type] = {name, cat, legacy?, vars:[{id,name,w,h,presets,draw(c,w,h)}]}。w×h は標準の実寸 mm（幅×奥行き）
 // draw は mm 単位のローカル座標（y=0 が壁側＝背面）で、サイズに合わせて描く。設備には文字を書かない（名前は文字ツールで書き足す）
@@ -649,7 +663,7 @@ const sameLine=(p,q)=>Math.abs(p.ux-q.ux)<1e-6&&Math.abs(p.uy-q.uy)<1e-6&&Math.a
 const onLine=(s,L)=>sameLine(lineOf(s),L);
 const P=(L,t)=>[t*L.ux+L.n*L.uy, t*L.uy-L.n*L.ux];
 const along=(L,w)=>w[0]*L.ux+w[1]*L.uy;
-const sameO=(a,b)=>(!a&&!b)||(!!a&&!!b&&a.t===b.t&&(a.f||0)===(b.f||0));
+const sameO=(a,b)=>(!a&&!b)||(!!a&&!!b&&a.t===b.t&&(a.f||0)===(b.f||0)&&(a.n||0)===(b.n||0)&&!a.sh===!b.sh&&!a.gr===!b.gr);
 const r3=v=>Math.round(v*1000)/1000;   // 直線から戻した座標の浮動小数の誤差を 0.001mm で丸める
 function segFrom(L,a,b,o,th){ const [x1,y1]=P(L,a),[x2,y2]=P(L,b); return mkSeg(r3(x1),r3(y1),r3(x2),r3(y2),o,th); }
 const REMOVE = Symbol('remove');
@@ -667,7 +681,7 @@ function replaceRange(L,from,to,o){
     covered.push([Math.max(a,from),Math.min(b,to),s.th]);
   }
   if(o===null){ out.push(segFrom(L,from,to,null,state.thick)); changed=true; }
-  else if(o!==REMOVE){ for(const [a,b,th] of covered) out.push(segFrom(L,a,b,{t:o.t,f:o.f||0},th)); }
+  else if(o!==REMOVE){ for(const [a,b,th] of covered) out.push(segFrom(L,a,b,{...o,f:o.f||0},th)); }
   state.walls=out; normalize(); regions=null; return changed;
 }
 // 同じ直線上で隣接し、種類と厚さが同じ線分を結合する
@@ -691,7 +705,7 @@ function setWallThick(seg,th){ if(seg.th===th) return false; seg.th=th; normaliz
 function segDist(s,w){ const dx=s.x2-s.x1, dy=s.y2-s.y1, l2=dx*dx+dy*dy; const t=l2?clamp(((w[0]-s.x1)*dx+(w[1]-s.y1)*dy)/l2,0,1):0; return Math.hypot(w[0]-(s.x1+t*dx),w[1]-(s.y1+t*dy)); }
 // 同じ距離なら建具（ドア・窓）を優先する。建具の端をクリックしたときに隣の壁が選ばれないようにするため
 function nearestSeg(w,tol){ tol=tol??10/view.z; let best=null,bd=tol; for(const s of state.walls){const d=segDist(s,w); if(d<bd||(d===bd&&s.o&&!(best&&best.o))){bd=d;best=s;}} return best; }
-function cycleFlip(s){ const max=(OPEN[s.o.t]||{flips:1}).flips; s.o={t:s.o.t,f:((s.o.f||0)+1)%max}; normalize(); regions=null; }
+function cycleFlip(s){ const max=(OPEN[s.o.t]||{flips:1}).flips; s.o={...s.o,f:((s.o.f||0)+1)%max}; normalize(); regions=null; }
 // 建具の向きを、区間の両端に接する同種の建具から引き継ぐ
 function inheritFlip(L,from,to,t){ for(const s of state.walls){ if(!s.o||s.o.t!==t||!onLine(s,L)) continue; const a=along(L,[s.x1,s.y1]), b=along(L,[s.x2,s.y2]); if(Math.abs(b-from)<0.05||Math.abs(a-to)<0.05) return s.o.f||0; } return 0; }
 const midOf=s=>[(s.x1+s.x2)/2,(s.y1+s.y2)/2];
@@ -872,31 +886,56 @@ function drawOpening(c,z,t,L,o,bg){
   const off=Math.max(4,k*0.2), dash=[Math.max(2,k*0.08),Math.max(2,k*0.06)];
   // 窓の枠とガラス面
   const g=t*0.42, frame=()=>{ c.fillStyle=GLASS; c.fillRect(0,-g,L,2*g); c.lineWidth=lwT; c.strokeStyle=INK; c.strokeRect(0,-g,L,2*g); };
-  const sashes=w=>{ const ov=Math.max(w*2,L*0.03); c.lineWidth=w; LN(c,0,-t*0.15,L/2+ov,-t*0.15); LN(c,L/2-ov,t*0.15,L,t*0.15); };
+  const np=openPanels(o);
+  // 引き戸・引違い窓の枚数ごとのレール割り当て：2 枚＝2 本、3 枚＝3 本（三本引き）、4 枚＝外 2 枚が奥・中 2 枚が手前
+  const RAIL={1:[0],2:[0,1],3:[0,1,2],4:[0,1,1,0]}, rails=n=>RAIL[n]||RAIL[2], railY=(r,k,span)=>k<2?0:(-span/2+span*r/(k-1));
+  const parts=(n,x0,x1,ov)=>{ const w=(x1-x0)/n; return [...Array(n)].map((_,i)=>[x0+i*w-(i>0?ov:0), x0+(i+1)*w+(i<n-1?ov:0)]); };
+  // 引違い：n 枚をレールに並べる（flip=true で手前・奥を入れ替え）
+  const slideSet=(n,y0,span,flip,drawFn,ov)=>{ const rr=rails(n), k=Math.max(...rr)+1; parts(n,0,L,ov).forEach(([x0,x1],i)=>drawFn(x0,x1,y0+(flip?-1:1)*railY(rr[i],k,span),k)); };
+  // 片引き（連動）：n 枚を面側から順にずらして重ね、引く側の壁に少し掛ける
+  const stackSet=(n,x0,x1,dirx,y0,step,ov)=>{ const w=(x1-x0)/n; for(let i=0;i<n;i++){ let a=x0+i*w-(i>0?ov:0), b=x0+(i+1)*w+(i<n-1?ov:0); if(dirx<0&&i===0) a-=ov; if(dirx>0&&i===n-1) b+=ov; panel(a,b,y0-i*step,pt*0.8); } };
+  const sashes=(w,n=2)=>{ const ov=Math.max(w*2,L*0.03); c.lineWidth=w; slideSet(n,0,t*(n===3?0.44:0.3),false,(a,b,y)=>LN(c,a,y,b,y),ov); };
+  // 窓の外側（f の bit1 が外の向き）：シャッター・雨戸と面格子
+  const outside=()=>{ let y=t/2; const so=s; if(o.t==='winfloor') y+=Math.max(3,t*0.5);
+    if(o.sh){ const d=Math.max(3,t*0.35); c.fillStyle=PANEL; c.fillRect(0,so>0?y:-y-d,L,d); c.lineWidth=lwT; c.strokeStyle=INK; c.setLineDash(dash); c.strokeRect(0,so>0?y:-y-d,L,d); c.setLineDash([]); y+=d+1; }
+    if(o.gr){ const d=Math.max(3,t*0.3), y0=so>0?y+1:-y-1-d, stp=Math.max(3,100*z); c.lineWidth=lwT; c.strokeStyle=INK; c.strokeRect(0,y0,L,d); for(let x=stp;x<L;x+=stp) LN(c,x,y0,x,y0+d); } };
   switch(o.t){
     case 'door': leaf(hx,L,ux,ny); break;
     case 'double': leaf(0,L/2,1,s); leaf(L,L/2,-1,s); break;
     case 'parent': leaf(hx,L*2/3,ux,ny); leaf(f&1?0:L,L/3,-ux,ny); break;
-    case 'slide1': { const ov=Math.min(pt*2,L*0.1); panel(dir>0?0:-ov, dir>0?L+ov:L, s*t*0.2); arrow(dir>0?L*0.2:L*0.8, dir>0?L*0.8:L*0.2, s*(t/2+off)); break; }
-    case 'slide': { const ov=Math.max(pt,L*0.04), a=f&1?1:-1; panel(0,L/2+ov,a*t*0.2); panel(L/2-ov,L,-a*t*0.2); break; }
+    case 'slide1': { const ov=Math.min(pt*2,L*0.1); if(np===1) panel(dir>0?0:-ov, dir>0?L+ov:L, s*t*0.2); else stackSet(np,0,L,dir,s*t*0.28,s*t*0.56/(np-1),ov);
+      arrow(dir>0?L*0.2:L*0.8, dir>0?L*0.8:L*0.2, s*(t/2+off)); break; }
+    case 'slide': { const ov=Math.max(pt,L*0.04)/(np>2?1.5:1); slideSet(np,0,t*(np===3?0.56:0.4),!!(f&1),(a,b,y,k)=>panel(a,b,y,k>2?pt*0.7:pt),ov); break; }
+    case 'slide2': { const ov=Math.min(pt*2,L*0.06), h=np/2; // 両引き：中央から左右へ分かれる
+      if(h===1){ panel(-ov,L/2,s*t*0.2); panel(L/2,L+ov,s*t*0.2); } else { stackSet(h,0,L/2,-1,s*t*0.28,s*t*0.56/(h-1),ov); stackSet(h,L/2,L,1,s*t*0.28,s*t*0.56/(h-1),ov); }
+      arrow(L*0.42,L*0.08,s*(t/2+off)); arrow(L*0.58,L*0.92,s*(t/2+off)); break; }
+    case 'outset': { const ov=Math.min(pt*3,L*0.1), y=s*(t/2+pt*0.7); // 壁の外に付く引き戸：レールを壁の面に描き、戸は壁の外側
+      c.lineWidth=lwT; c.strokeStyle=INK; LN(c,dir>0?-ov:-L*0.9,s*t/2,dir>0?L*1.9:L+ov,s*t/2); panel(-ov,L+ov,y); arrow(dir>0?L*0.2:L*0.8, dir>0?L*0.8:L*0.2, s*(t/2+pt*1.4+off)); break; }
     case 'pocket': { const pl=L*0.9, sx=dir>0?L:-pl; c.fillStyle=bg; c.fillRect(sx,-pt*0.8,pl,pt*1.6);
       c.setLineDash(dash); c.lineWidth=lwT; c.strokeStyle=INK; c.strokeRect(sx,-pt/2,pl,pt); c.setLineDash([]);
-      panel(dir>0?0:-pt, dir>0?L+pt:L, 0); arrow(dir>0?L*0.2:L*0.8, dir>0?L*0.8:L*0.2, t/2+off); break; }
+      if(np===1) panel(dir>0?0:-pt, dir>0?L+pt:L, 0); else stackSet(np,0,L,dir,t*0.15,t*0.3,pt);
+      arrow(dir>0?L*0.2:L*0.8, dir>0?L*0.8:L*0.2, t/2+off); break; }
     case 'fold': { // 蛇腹：扉 1 枚 ≒ 400mm、2 枚で 1 つの山
-      const sf=f&1?-1:1, n=Math.max(2,2*Math.round(Lmm/800)), p=L/n, y0=sf*t*0.3, amp=sf*(t*0.2+Math.min(p*0.55,k*0.5));
+      const sf=f&1?-1:1, n=o.n&&OPEN.fold.panels.includes(o.n)?o.n:Math.max(2,2*Math.round(Lmm/800)), p=L/n, y0=sf*t*0.3, amp=sf*(t*0.2+Math.min(p*0.55,k*0.5));
       c.lineWidth=Math.max(1.5,pt*0.6); c.lineJoin='round'; c.strokeStyle=INK; c.beginPath(); c.moveTo(0,y0);
       for(let i=1;i<=n;i++) c.lineTo(i*p, i%2?y0+amp:y0); c.stroke(); c.lineJoin='miter'; break; }
     case 'open': c.strokeStyle='#777'; c.lineWidth=lwT; c.setLineDash([Math.max(3,k*0.2),Math.max(2,k*0.15)]); LN(c,0,0,L,0); c.setLineDash([]); break;
-    case 'window': frame(); sashes(lw*1.3); break;
-    case 'winfloor': { frame(); sashes(lw*1.8); const d=Math.max(3,t*0.5), y=s>0?t/2:-t/2-d; c.fillStyle=bg; c.fillRect(0,y,L,d); c.lineWidth=lwT; c.strokeStyle=INK; c.strokeRect(0,y,L,d); break; }
-    case 'fix': frame(); c.lineWidth=lw*1.3; LN(c,0,0,L,0); break;
-    case 'casement': frame(); c.lineWidth=lw; LN(c,0,0,L,0); leaf(hx,L*0.8,ux,ny,ny*g,Math.max(1.5,pt*0.6)); break;
+    case 'window': frame(); sashes(lw*1.3,np); outside(); break;
+    case 'slidewin': { frame(); const ov=Math.max(lw*2,L*0.03); c.lineWidth=lw*1.3; LN(c,L/2-ov,t*0.15,L,t*0.15); LN(c,0,-t*0.15,L/2+ov,-t*0.15); // 片引き窓：片側は FIX、もう片側が引く
+      arrow(dir>0?L*0.12:L*0.38,dir>0?L*0.38:L*0.12,0); outside(); break; }
+    case 'hung': frame(); c.lineWidth=lw*1.2; LN(c,0,-t*0.12,L,-t*0.12); LN(c,0,t*0.12,L,t*0.12); outside(); break;
+    case 'awning': { frame(); c.lineWidth=lw; LN(c,0,0,L,0); const len=L*0.85, ang=Math.PI/6; c.lineWidth=Math.max(1.5,pt*0.6); LN(c,hx,ny*g,hx+ux*len*Math.cos(ang),ny*(g+len*Math.sin(ang)));
+      c.setLineDash(dash); c.lineWidth=lwT; LN(c,hx+ux*len*Math.cos(ang),ny*(g+len*Math.sin(ang)),hx+ux*len,ny*g); c.setLineDash([]); outside(); break; }
+    case 'louver': { frame(); c.lineWidth=lwT*1.2; const nn=Math.max(3,Math.round(Lmm/90)); for(let i=0;i<nn;i++){ const x=L*(i+0.5)/nn, d=Math.min(L/nn*0.6,g*1.2); LN(c,x-d/2,-g*0.8,x+d/2,g*0.8); } outside(); break; }
+    case 'winfloor': { frame(); sashes(lw*1.8,np); const d=Math.max(3,t*0.5), y=s>0?t/2:-t/2-d; c.fillStyle=bg; c.fillRect(0,y,L,d); c.lineWidth=lwT; c.strokeStyle=INK; c.strokeRect(0,y,L,d); outside(); break; }
+    case 'fix': frame(); c.lineWidth=lw*1.3; LN(c,0,0,L,0); outside(); break;
+    case 'casement': frame(); c.lineWidth=lw; LN(c,0,0,L,0); leaf(hx,L*0.8,ux,ny,ny*g,Math.max(1.5,pt*0.6)); outside(); break;
     case 'bay': { const d=450*z, e=Math.min(d*0.6,L*0.25), y0=s*t/2;
       c.fillStyle=bg; c.beginPath(); c.moveTo(0,y0); c.lineTo(e,y0+s*d); c.lineTo(L-e,y0+s*d); c.lineTo(L,y0); c.closePath(); c.fill();
       c.fillStyle=GLASS; c.fillRect(e,y0+s*d*0.78,L-2*e,s*d*0.22);
       c.lineWidth=lw; c.strokeStyle=INK; c.beginPath(); c.moveTo(0,y0); c.lineTo(e,y0+s*d); c.lineTo(L-e,y0+s*d); c.lineTo(L,y0); c.stroke();
       c.lineWidth=lwT; LN(c,e*0.78,y0+s*d*0.78,L-e*0.78,y0+s*d*0.78); LN(c,0,y0,L,y0); break; }
-    case 'small': frame(); c.lineWidth=lw; c.setLineDash(dash); LN(c,0,0,L,0); c.setLineDash([]); break;
+    case 'small': frame(); c.lineWidth=lw; c.setLineDash(dash); LN(c,0,0,L,0); c.setLineDash([]); outside(); break;
     default: c.lineWidth=lw; LN(c,0,0,L,0);
   }
 }
@@ -1119,7 +1158,7 @@ function endPointer(e){
     case 'wall': { const e2=snapPt(w); if(e2[0]===d.a[0]&&e2[1]===d.a[1]){ const seg=nearestSeg(w); if(seg&&setWallThick(seg,state.thick)) commit(); } else if(addWallLine(d.a,e2)) commit(); break; }
     case 'dim': { const b=snapPt(w); if(Math.hypot(b[0]-d.a[0],b[1]-d.a[1])>=0.5){ state.dims.push({x1:d.a[0],y1:d.a[1],x2:b[0],y2:b[1]}); commit(); } break; }
     case 'erase': { const r=dragRange(d,w); const restore=!d.moved&&d.seg.o; if(replaceRange(r.L,r.from,r.to,restore?null:REMOVE)) commit(); break; }
-    case 'open': { const r=dragRange(d,w); const f=inheritFlip(r.L,r.from,r.to,d.sub); if(replaceRange(r.L,r.from,r.to,{t:d.sub,f})){ const [x,y]=P(r.L,(r.from+r.to)/2); selOpenPt=[x,y]; commit(); } updateOpenPanel(); break; }
+    case 'open': { const r=dragRange(d,w); const f=inheritFlip(r.L,r.from,r.to,d.sub); if(replaceRange(r.L,r.from,r.to,newOpening(d.sub,f))){ const [x,y]=P(r.L,(r.from+r.to)/2); selOpenPt=[x,y]; commit(); } updateOpenPanel(); break; }
     case 'none': if(d.changed) commit(); updatePanels(); break;
     case 'room': selectRoomAt(d.w); break;
     case 'newText': { const t={x:snapV(d.w[0]),y:snapV(d.w[1]),text:'文字',size:textSize}; state.texts.push(t); selText=t; commit(); updateTextPanel(); const inp=$('#textInput'); inp.focus(); inp.select(); break; }
@@ -1192,8 +1231,14 @@ function makeTypeChips(el,kind,get,set){ el.innerHTML=''; for(const id in OPEN){
 makeTypeChips($('#doorTypes'),'door',()=>doorSub,v=>doorSub=v);
 makeTypeChips($('#winTypes'),'win',()=>winSub,v=>winSub=v);
 function updateOpenPanel(){ const s=(tool==='door'||tool==='window'||tool==='select')?selOpen():null; $('#openSel').style.display=s?'':'none'; if(!s) return;
-  const o=OPEN[s.o.t]||{name:s.o.t,flips:1}; $('#openSelName').textContent='選択中：'+o.name; $('#openW').value=Math.round(lineOf(s).len/10)*10; $('#openFlip').disabled=o.flips<2; }
+  const o=OPEN[s.o.t]||{name:s.o.t,flips:1}; $('#openSelName').textContent='選択中：'+o.name+(o.panels&&(s.o.n||s.o.t!=='fold')?'（'+openPanels(s.o)+'枚）':'');
+  const nb=$('#openNSeg'); $('#openNBox').style.display=o.panels?'':'none'; nb.innerHTML='';
+  if(o.panels) for(const n of o.panels){ const b=document.createElement('button'); b.textContent=n+'枚'; b.classList.toggle('on',s.o.n?s.o.n===n:(s.o.t!=='fold'&&openPanels(s.o)===n)); b.onclick=()=>setOpenOpt({n}); nb.appendChild(b); }
+  const ops=o.opts||[]; $('#openShRow').style.display=ops.includes('sh')?'':'none'; $('#openGrRow').style.display=ops.includes('gr')?'':'none'; $('#openSh').checked=!!s.o.sh; $('#openGr').checked=!!s.o.gr; $('#openW').value=Math.round(lineOf(s).len/10)*10; $('#openFlip').disabled=o.flips<2; }
 $('#openW').onchange=e=>{ const w=clamp(Math.round((+e.target.value||0)/10)*10,200,6000); setOpeningWidth(w); e.target.blur(); };
+// 選択中の建具の枚数・オプションを変える（枚数は次に置くときの標準にもする）
+function setOpenOpt(ch){ const s=selOpen(); if(!s) return; const o={...s.o,...ch}; for(const k of ['sh','gr']) if(!o[k]) delete o[k]; if('n' in ch) openPref[o.t]=ch.n; s.o=o; normalize(); regions=null; commit(); updateOpenPanel(); }
+$('#openSh').onchange=e=>setOpenOpt({sh:e.target.checked}); $('#openGr').onchange=e=>setOpenOpt({gr:e.target.checked});
 $('#openFlip').onclick=()=>{ const s=selOpen(); if(!s) return; cycleFlip(s); commit(); updateOpenPanel(); };
 $('#openDel').onclick=()=>{ const s=selOpen(); if(!s) return; const L=lineOf(s); replaceRange(L,L.a,L.b,null); selOpenPt=null; commit(); updateOpenPanel(); };
 
