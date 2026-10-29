@@ -904,7 +904,9 @@ function drawOpening(c,z,t,L,o,bg){
     case 'double': leaf(0,L/2,1,s); leaf(L,L/2,-1,s); break;
     case 'parent': leaf(hx,L*2/3,ux,ny); leaf(f&1?0:L,L/3,-ux,ny); break;
     case 'slide1': { const ov=Math.min(pt*2,L*0.1); if(np===1) panel(dir>0?0:-ov, dir>0?L+ov:L, s*t*0.2); else stackSet(np,0,L,dir,s*t*0.28,s*t*0.56/(np-1),ov);
-      arrow(dir>0?L*0.2:L*0.8, dir>0?L*0.8:L*0.2, s*(t/2+off)); break; }
+      // 開けたときに戸が収まる位置：収まる側の壁の手前に破線（複数枚は重なって 1 枚分の幅に収まる）。矢印は閉めた位置からそこへ
+      const sw=L/np, sx=dir>0?L+ov:-ov-sw, yb=s>0?t/2:-t/2-pt; c.setLineDash(dash); c.lineWidth=lwT; c.strokeStyle=INK; c.strokeRect(sx,yb,sw,pt); c.setLineDash([]);
+      arrow(dir>0?L*0.3:L*0.7, dir>0?L+ov+sw*0.75:-ov-sw*0.75, s*(t/2+pt+off)); break; }
     case 'slide': { const ov=Math.max(pt,L*0.04)/(np>2?1.5:1); slideSet(np,0,t*(np===3?0.56:0.4),!!(f&1),(a,b,y,k)=>panel(a,b,y,k>2?pt*0.7:pt),ov); break; }
     case 'slide2': { const ov=Math.min(pt*2,L*0.06), h=np/2; // 両引き：中央から左右へ分かれる
       if(h===1){ panel(-ov,L/2,s*t*0.2); panel(L/2,L+ov,s*t*0.2); } else { stackSet(h,0,L/2,-1,s*t*0.28,s*t*0.56/(h-1),ov); stackSet(h,L/2,L,1,s*t*0.28,s*t*0.56/(h-1),ov); }
@@ -1224,7 +1226,7 @@ $('#textDel').onclick=()=>{ if(!selText) return; state.texts.splice(state.texts.
 // 建具の種類チップと選択パネル
 // チップの小さな記号図：短い壁の間に建具を 1 つ描く
 function openIcon(id){ const W=46,H=36,d=window.devicePixelRatio||1, cv=document.createElement('canvas'); cv.width=W*d; cv.height=H*d; cv.style.width=W+'px'; cv.style.height=H+'px';
-  const c=cv.getContext('2d'); c.scale(d,d); const z=0.03, t=5, L=24, x0=(W-L)/2, y=7;
+  const c=cv.getContext('2d'); c.scale(d,d); const z=0.03, t=5, L=id==='slide1'?19:24, x0=id==='slide1'?3:(W-L)/2, y=7;   // 片引き戸は右に収まる位置まで入るよう左へ寄せる
   c.fillStyle=INK; c.fillRect(0,y-t/2,x0,t); c.fillRect(x0+L,y-t/2,W-x0-L,t); c.save(); c.translate(x0,y); drawOpening(c,z,t,L,{t:id,f:0},'#fff'); c.restore(); return cv; }
 function makeTypeChips(el,kind,get,set){ el.innerHTML=''; for(const id in OPEN){ if(OPEN[id].kind!==kind) continue; const b=document.createElement('button'); b.appendChild(openIcon(id)); const sp=document.createElement('span'); sp.textContent=OPEN[id].name; b.appendChild(sp); b.dataset.id=id; b.classList.toggle('on',get()===id);
   b.onclick=()=>{ set(id); [...el.children].forEach(x=>x.classList.toggle('on',x===b)); setStatus(hintOf(tool)); }; el.appendChild(b); } }
