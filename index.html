@@ -60,6 +60,11 @@ canvas{display:block;touch-action:none;cursor:crosshair}
 .floatbar button:hover{background:#EEF2F7}
 .floatbar button svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .floatbar button.del{color:#A5262C}
+.floatbar button.on{background:#DCE6F3;color:#2B4C7E}
+.floatbar .fbLabel{display:flex;align-items:center;padding:0 8px;font-size:13px;font-weight:600;color:#2B4C7E;white-space:nowrap}
+.areaBig{margin:4px 0 6px;font-size:18px;font-weight:700;color:#2B4C7E}
+.areaList{margin:0 0 6px;padding:0;list-style:none;font-size:12px;color:var(--sub,#5A6372)}
+.areaList li{display:flex;justify-content:space-between;gap:8px;padding:2px 0;border-bottom:1px dotted var(--line)}
 @media (pointer:coarse){.floatbar button{width:42px;height:42px}}
 .swatches{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin:8px 0}
 .swatches button{aspect-ratio:1;padding:0;border-radius:6px;border:2px solid var(--line)}
@@ -281,7 +286,15 @@ kbd{font:11px ui-monospace,monospace;background:#F0F2F5;border:1px solid var(--l
         <label class="row">面積の表示
           <select id="roomArea"><option value="jo">帖</option><option value="m2">㎡</option><option value="both">両方</option><option value="none">なし</option></select>
         </label>
-        <div class="stack"><button id="roomDel" class="danger">この部屋の設定を消す</button></div>
+        <p class="hint" id="roomM2"></p>
+        <div class="stack"><button id="roomAddArea">ほかの部屋も選んで面積を合計</button><button id="roomDel" class="danger">この部屋の設定を消す</button></div>
+      </div>
+      <div id="areaSel" class="selbox" style="display:none">
+        <h3 id="areaName">選択中の部屋</h3>
+        <p class="areaBig" id="areaTotal"></p>
+        <ul class="areaList" id="areaList"></ul>
+        <p class="hint">Shift（または Ctrl）＋クリックで部屋を足したり外したりできます。スマホは「タップで部屋を足す」をオンにしてください。範囲選択で囲んだ部屋も合計されます。</p>
+        <div class="stack"><button id="areaAddBtn">タップで部屋を足す：オフ</button><button id="areaClear">選択を解除（Esc）</button></div>
       </div>
       <div id="wallSel" class="selbox" style="display:none">
         <h3>選択中：壁 <span id="wallLen"></span></h3>
@@ -290,6 +303,7 @@ kbd{font:11px ui-monospace,monospace;background:#F0F2F5;border:1px solid var(--l
       </div>
       <div id="multiSel" class="selbox" style="display:none">
         <h3 id="multiName">選択中</h3>
+        <p class="areaBig" id="multiArea" style="display:none"></p>
         <p class="hint">選んだものをまとめてドラッグで移動できます（グリッドに吸着、自由配置の設定にも従います）。</p>
         <div class="stack"><button id="multiDup">まとめて複製（Ctrl+D）</button><button id="multiClear">選択を解除（Esc）</button><button id="multiDel" class="danger">まとめて削除（Delete）</button></div>
       </div>
@@ -711,7 +725,20 @@ function inheritFlip(L,from,to,t){ for(const s of state.walls){ if(!s.o||s.o.t!=
 const midOf=s=>[(s.x1+s.x2)/2,(s.y1+s.y2)/2];
 // 選択中の壁（中点から引き直す）
 function selWall(){ if(!selWallPt) return null; const s=nearestSeg(selWallPt,1); return s&&!s.o?s:null; }
-function clearSel(){ selRoom=null; selFix=null; selText=null; selOpenPt=null; selWallPt=null; selDim=null; multi=null; }
+function clearSel(){ selRoom=null; selFix=null; selText=null; selOpenPt=null; selWallPt=null; selDim=null; multi=null; areaSel=null; areaAdd=false; }
+// 面積の合計用に選んだ部屋（壁で囲まれた領域）。領域は作り直されるので、中の点で持つ
+let areaSel=null, areaAdd=false;   // areaSel: [[x,y],...]、areaAdd: タップだけで部屋を足し外しするモード（スマホ用）
+const TSUBO_M2=400/121;   // 1坪＝400/121㎡（約 3.3058㎡）
+const m2Tsubo=a=>{ const m2=a/1e6; return m2.toFixed(2)+'㎡（'+(m2/TSUBO_M2).toFixed(2)+'坪）'; };
+// 点の一覧から、重複のない領域の一覧を返す
+function regionsOf(pts){ if(!pts||!pts.length) return []; ensureRegions(); const out=[]; for(const q of pts){ const id=regionAt(q); if(id>=0&&!out.includes(regions[id])) out.push(regions[id]); } return out; }
+function areaRegions(){ return areaSel?regionsOf(areaSel):multi?regionsOf(multi.areaPts):[]; }
+// 点 w の部屋を、面積の合計に足す／外す（1 部屋だけ選んでいたときは、その部屋から始める）
+function toggleAreaAt(w){ ensureRegions(); const id=regionAt(w); if(id<0) return false;
+  let pts=areaSel?areaSel.slice():[]; if(!areaSel&&selRoom){ const r0=regions.find(r=>r.props===selRoom); if(r0) pts.push([r0.cx,r0.cy]); }
+  const add=areaAdd; clearSel(); areaAdd=add;
+  const i=pts.findIndex(q=>regionAt(q)===id); if(i>=0) pts.splice(i,1); else pts.push([w[0],w[1]]);
+  areaSel=pts.length?pts:null; if(!areaSel) areaAdd=false; return true; }
 // 範囲選択（選択ツールで囲んだもの）。壁・建具の線分は normalize で作り直されるので中点で持つ
 let multi=null;   // {fix:[], text:[], dim:[], room:[部屋の設定], segPts:[[x,y],...]}
 function multiSegs(){ if(!multi) return []; const out=[]; for(const q of multi.segPts){ const g=nearestSeg(q,1); if(g&&!out.includes(g)) out.push(g); } return out; }
@@ -724,6 +751,7 @@ function selectInRect(r){ const inR=(x,y)=>x>=r.x1&&x<=r.x2&&y>=r.y1&&y<=r.y2;
     dim:state.dims.filter(d=>inR(d.x1,d.y1)&&inR(d.x2,d.y2)),
     room:state.rooms.filter(q=>q.pt&&inR(q.pt[0],q.pt[1])),
     segPts:state.walls.filter(g=>inR(g.x1,g.y1)&&inR(g.x2,g.y2)).map(midOf)};
+  ensureRegions(); multi.areaPts=regions.filter(g=>g.poly.every(([x,y])=>inR(x,y))).map(g=>[g.cx,g.cy]);   // 丸ごと囲んだ部屋は面積を合計する
   if(!multiCount()) multi=null; }
 function multiBox(){ if(!multi) return null; let x1=Infinity,y1=Infinity,x2=-Infinity,y2=-Infinity; const ext=(a,b,c,d)=>{x1=Math.min(x1,a,c);y1=Math.min(y1,b,d);x2=Math.max(x2,a,c);y2=Math.max(y2,b,d);};
   for(const f of multi.fix){ const [fw,fh]=fixDims(f); ext(f.x,f.y,f.x+fw,f.y+fh); } for(const t of multi.text) ext(...textBox(t)); for(const d of multi.dim) ext(d.x1,d.y1,d.x2,d.y2); for(const g of multiSegs()) ext(g.x1,g.y1,g.x2,g.y2);
@@ -735,20 +763,20 @@ function placeSegs(list){ const th0=state.thick;
   for(const g of list){ if(!g.o) continue; const L=lineOf(g); replaceRange(L,along(L,[g.x1,g.y1]),along(L,[g.x2,g.y2]),{...g.o}); } }
 const shiftSeg=(g,dx,dy)=>({...g,x1:g.x1+dx,y1:g.y1+dy,x2:g.x2+dx,y2:g.y2+dy,o:g.o?{...g.o}:null});
 function startMultiMove(w){ const segs=multiSegs(); return {mode:'moveMulti',w0:w,moved:false,dx:0,dy:0,
-  fix:multi.fix.map(f=>[f.x,f.y]), text:multi.text.map(t=>[t.x,t.y]), dim:multi.dim.map(d=>[d.x1,d.y1,d.x2,d.y2]), room:multi.room.map(q=>[...q.pt]),
+  fix:multi.fix.map(f=>[f.x,f.y]), text:multi.text.map(t=>[t.x,t.y]), dim:multi.dim.map(d=>[d.x1,d.y1,d.x2,d.y2]), room:multi.room.map(q=>[...q.pt]), area:(multi.areaPts||[]).map(q=>[...q]),
   walls0:state.walls.map(g=>({...g,o:g.o?{...g.o}:null})), idx:new Set(segs.map(g=>state.walls.indexOf(g))), segPts0:multi.segPts.map(q=>[...q])}; }
 // 移動量 dx,dy を元の位置から当てはめる（ドラッグ中は壁を重ねて仮表示、確定時に placeSegs で置き直す）
 function applyMultiMove(d,dx,dy,final){ d.dx=dx; d.dy=dy;
   multi.fix.forEach((f,i)=>{ f.x=d.fix[i][0]+dx; f.y=d.fix[i][1]+dy; }); multi.text.forEach((t,i)=>{ t.x=d.text[i][0]+dx; t.y=d.text[i][1]+dy; });
   multi.dim.forEach((m,i)=>{ const o=d.dim[i]; m.x1=o[0]+dx; m.y1=o[1]+dy; m.x2=o[2]+dx; m.y2=o[3]+dy; }); multi.room.forEach((q,i)=>{ q.pt=[d.room[i][0]+dx,d.room[i][1]+dy]; });
-  multi.segPts=d.segPts0.map(q=>[q[0]+dx,q[1]+dy]);
+  multi.segPts=d.segPts0.map(q=>[q[0]+dx,q[1]+dy]); multi.areaPts=d.area.map(q=>[q[0]+dx,q[1]+dy]);
   const keep=d.walls0.filter((g,i)=>!d.idx.has(i)).map(g=>({...g,o:g.o?{...g.o}:null})), moved=d.walls0.filter((g,i)=>d.idx.has(i)).map(g=>shiftSeg(g,dx,dy));
   if(final){ state.walls=keep; normalize(); placeSegs(moved); } else state.walls=keep.concat(moved);
   regions=null; }
 function dupMulti(){ const off=Math.max(state.grid,snapV(910)||state.grid), segs=multiSegs().map(g=>shiftSeg(g,off,off));
   const nf=multi.fix.map(f=>({...f,x:f.x+off,y:f.y+off})), nt=multi.text.map(t=>({...t,x:t.x+off,y:t.y+off})), nd=multi.dim.map(d=>({x1:d.x1+off,y1:d.y1+off,x2:d.x2+off,y2:d.y2+off})), nr=multi.room.map(q=>({...q,pt:[q.pt[0]+off,q.pt[1]+off]}));
   state.fixtures.push(...nf); state.texts.push(...nt); state.dims.push(...nd); state.rooms.push(...nr); placeSegs(segs);
-  multi={fix:nf,text:nt,dim:nd,room:nr,segPts:segs.map(midOf)}; commit(); }
+  multi={fix:nf,text:nt,dim:nd,room:nr,segPts:segs.map(midOf),areaPts:(multi.areaPts||[]).map(q=>[q[0]+off,q[1]+off])}; commit(); }
 // 選択中の建具（中点から引き直す）
 function selOpen(){ if(!selOpenPt) return null; const s=nearestSeg(selOpenPt,1); return s&&s.o?s:null; }
 // 選択中の建具の幅を、中心を保ったまま変える
@@ -981,6 +1009,8 @@ function drawScene(c,z,ox,oy,opt){
     if(name){c.font=`600 ${fs}px ${FONT}`; c.fillText(name,sx,sy-(at?fs*0.45:0));}
     if(at){c.font=`${fs*0.8}px ${FONT}`; c.fillText(at,sx,sy+(name?fs*0.6:0));}
     if(r.props===selRoom&&opt.ui){c.strokeStyle='#2B4C7E';c.lineWidth=2;c.setLineDash([5,4]);c.lineCap='butt';c.stroke(regionPath(r,S));c.setLineDash([]);} }
+  // 面積の合計に入っている部屋
+  if(opt.ui&&tool==='select'){ for(const r of areaRegions()){ const pth=regionPath(r,S); c.fillStyle='rgba(43,76,126,.13)'; c.fill(pth,'evenodd'); c.strokeStyle='#2B4C7E'; c.lineWidth=2; c.setLineDash([5,4]); c.stroke(pth); c.setLineDash([]); } }
   // 文字
   c.textAlign='left'; c.textBaseline='top';
   for(const tx of state.texts){ const [sx,sy]=S(tx.x,tx.y); c.font=`${tx.size*z}px ${FONT}`; c.fillStyle='#1B2433'; c.fillText(tx.text,sx,sy);
@@ -1107,7 +1137,8 @@ cv.addEventListener('pointerdown',e=>{
     case 'room': drag={mode:'room',w}; break;
     case 'text': { const t=hitText(w); if(t){ selText=t; drag={mode:'moveText',t,ox:w[0]-t.x,oy:w[1]-t.y,moved:false}; } else drag={mode:'newText',w}; updateTextPanel(); break; }
     case 'fix': { const f=hitFix(w); if(f){selFix=f;drag={mode:'moveFix',f,ox:w[0]-f.x,oy:w[1]-f.y,moved:false};} else drag={mode:'newFix',w}; updateFixPanel(); break; }
-    case 'select': { if(multi){ const b=multiBox(), tol=6/view.z; if(b&&w[0]>=b[0]-tol&&w[0]<=b[2]+tol&&w[1]>=b[1]-tol&&w[1]<=b[3]+tol){ drag=startMultiMove(w); break; } }
+    case 'select': { if((e.shiftKey||e.ctrlKey||e.metaKey||areaAdd)&&e.button!==2&&toggleAreaAt(w)){ drag={mode:'none'}; updatePanels(); break; }
+      if(multi){ const b=multiBox(), tol=6/view.z; if(b&&w[0]>=b[0]-tol&&w[0]<=b[2]+tol&&w[1]>=b[1]-tol&&w[1]<=b[3]+tol){ drag=startMultiMove(w); break; } }
       const t=hitText(w), f=t?null:hitFix(w), dm=(t||f)?null:hitDim(w); clearSel(); drag={mode:'none'};
       if(t){ selText=t; drag={mode:'moveText',t,ox:w[0]-t.x,oy:w[1]-t.y,moved:false}; }
       else if(f){ selFix=f; drag={mode:'moveFix',f,ox:w[0]-f.x,oy:w[1]-f.y,moved:false}; }
@@ -1257,12 +1288,23 @@ function selectRoomAt(w){ ensureRegions(); const id=regionAt(w);
   const r=regions[id]; if(!r.props){ r.props={pt:[w[0],w[1]],name:'',color:null,area:'jo'}; state.rooms.push(r.props); lastSnap=snap(); }
   selRoom=r.props; updateRoomPanel(); render(); }
 function updateRoomPanel(){ const on=!!selRoom; $('#roomNone').style.display=on?'none':''; $('#roomSel').style.display=on&&(tool==='room'||tool==='select')?'':'none'; if(!on) return;
+  { ensureRegions(); const r=regions.find(r=>r.props===selRoom); $('#roomM2').textContent=r?'面積 '+m2Tsubo(r.area)+'・'+areaText(r.area,'jo'):''; }
+  $('#roomAddArea').style.display=tool==='select'?'':'none';
   $('#roomName').value=selRoom.name||''; $('#roomArea').value=selRoom.area||'jo'; $$('#swatches button').forEach(b=>b.classList.toggle('on',(b.dataset.c||null)===(selRoom.color||null))); if(selRoom.color) $('#roomColorPick').value=selRoom.color; }
 $('#roomName').oninput=e=>{ if(selRoom){selRoom.name=e.target.value; render();} };
 $('#roomName').onchange=()=>{ if(selRoom) commit(); };
 $('#roomArea').onchange=e=>{ if(selRoom){selRoom.area=e.target.value; commit();} };
 $('#roomColorPick').oninput=e=>{ if(selRoom){selRoom.color=e.target.value; updateRoomPanel(); render();} };
 $('#roomColorPick').onchange=()=>{ if(selRoom) commit(); };
+$('#roomAddArea').onclick=()=>{ if(!selRoom) return; ensureRegions(); const r=regions.find(r=>r.props===selRoom); if(!r) return; clearSel(); areaSel=[[r.cx,r.cy]]; areaAdd=true; updatePanels(); render(); setStatus('足したい部屋をクリック（タップ）してください。もう一度押すと外れます'); };
+function updateAreaPanel(){ const on=visKind()==='area'; $('#areaSel').style.display=on?'':'none'; if(!on) return;
+  const rs=areaRegions(), tot=rs.reduce((a,r)=>a+r.area,0);
+  $('#areaName').textContent='選択中の部屋：'+rs.length+' 室'; $('#areaTotal').textContent='合計 '+m2Tsubo(tot);
+  const ul=$('#areaList'); ul.innerHTML=''; rs.forEach((r,i)=>{ const li=document.createElement('li'), a=document.createElement('span'), b=document.createElement('span');
+    a.textContent=(r.props&&r.props.name)||'部屋 '+(i+1); b.textContent=m2Tsubo(r.area); li.append(a,b); ul.appendChild(li); });
+  $('#areaAddBtn').textContent='タップで部屋を足す：'+(areaAdd?'オン':'オフ'); $('#areaAddBtn').classList.toggle('on',areaAdd); }
+$('#areaAddBtn').onclick=()=>{ areaAdd=!areaAdd; updatePanels(); render(); };
+$('#areaClear').onclick=()=>{ clearSel(); updatePanels(); render(); };
 $('#roomDel').onclick=()=>{ if(!selRoom) return; state.rooms.splice(state.rooms.indexOf(selRoom),1); selRoom=null; updatePanels(); commit(); };
 for(const [n,c] of ROOM_PRESETS){ const b=document.createElement('button'); b.textContent=n; b.onclick=()=>{ if(!selRoom) return; selRoom.name=n; selRoom.color=c; updateRoomPanel(); commit(); }; $('#roomPresets').appendChild(b); }
 for(const c of [null,...PALETTE]){ const b=document.createElement('button'); if(c){b.style.background=c;b.dataset.c=c;b.title=c;} else {b.className='none';b.title='塗りなし';} b.onclick=()=>{ if(!selRoom) return; selRoom.color=c; updateRoomPanel(); commit(); }; $('#swatches').appendChild(b); }
@@ -1325,14 +1367,16 @@ function updateDimPanel(){ const d=tool==='select'&&selDim&&state.dims.includes(
 $('#dimDel').onclick=()=>doAction('del');
 function updateMultiPanel(){ const on=visKind()==='multi'; $('#multiSel').style.display=on?'':'none'; if(!on) return;
   const parts=[['設備',multi.fix.length],['文字',multi.text.length],['寸法線',multi.dim.length],['壁・建具',multiSegs().length]].filter(x=>x[1]).map(x=>x[0]+' '+x[1]);
-  $('#multiName').textContent='選択中：'+multiCount()+' 個（'+parts.join('・')+'）'; }
+  $('#multiName').textContent='選択中：'+multiCount()+' 個（'+parts.join('・')+'）';
+  const rs=areaRegions(), ma=$('#multiArea'); ma.style.display=rs.length?'':'none'; if(rs.length) ma.textContent='囲んだ部屋 '+rs.length+' 室：'+m2Tsubo(rs.reduce((a,r)=>a+r.area,0)); }
 $('#multiDup').onclick=()=>doAction('dup'); $('#multiDel').onclick=()=>doAction('del'); $('#multiClear').onclick=()=>{ clearSel(); updatePanels(); render(); };
-function updatePanels(){ updateMultiPanel(); updateFixPanel(); updateTextPanel(); updateOpenPanel(); updateRoomPanel(); updateWallPanel(); updateDimPanel(); $('#selNone').style.display=visKind()?'none':''; }
+function updatePanels(){ updateMultiPanel(); updateAreaPanel(); updateFixPanel(); updateTextPanel(); updateOpenPanel(); updateRoomPanel(); updateWallPanel(); updateDimPanel(); $('#selNone').style.display=visKind()?'none':''; }
 
 // ===== 選択中のものへの操作 =====
 // いま画面で選択として見えているもの（ツールと対応しないものは対象にしない）
 function visKind(){
   if(tool==='select'&&multi) return 'multi';
+  if(tool==='select'&&areaSel) return 'area';
   if(selFix&&(tool==='select'||tool==='fix')) return 'fix';
   if(selText&&(tool==='select'||tool==='text')) return 'text';
   if(tool==='select'&&selDim) return 'dim';
@@ -1341,7 +1385,7 @@ function visKind(){
   if(tool==='select'&&selRoom) return 'room';
   return null; }
 function dupFix(){ if(visKind()!=='fix') return; const off=Math.max(state.grid,snapV(300)||state.grid); const n={...selFix,x:selFix.x+off,y:selFix.y+off}; state.fixtures.push(n); selFix=n; commit(); updateFixPanel(); }
-function deleteSel(){ const k=visKind(); if(!k) return;
+function deleteSel(){ const k=visKind(); if(!k||k==='area') return;   // 面積の合計は部屋を選んでいるだけなので消さない
   if(k==='multi'){ const sg=new Set(multiSegs()); state.walls=state.walls.filter(g=>!sg.has(g)); normalize();
     state.fixtures=state.fixtures.filter(f=>!multi.fix.includes(f)); state.texts=state.texts.filter(t=>!multi.text.includes(t)); state.dims=state.dims.filter(d=>!multi.dim.includes(d)); state.rooms=state.rooms.filter(q=>!multi.room.includes(q));
     multi=null; commit(); }
@@ -1359,13 +1403,15 @@ function doAction(a){ const k=visKind();
   else if(a==='del') deleteSel();
   else if(a==='edit'&&k==='text'){ const i=$('#textInput'); i.focus(); i.select(); }
   else if(a==='flip'&&k==='open') $('#openFlip').click();
+  else if(a==='add'&&k==='area') areaAdd=!areaAdd;
+  else if(a==='clear') clearSel();
   updatePanels(); render(); }
 // 選んだものの近くに出す操作ボタン
 const FB_ICON={rot:'<path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/>',mir:'<path d="M12 3v18"/><path d="M9 7l-5 5 5 5z"/><path d="M15 7l5 5-5 5z"/>',
   dup:'<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M4 16V6a2 2 0 0 1 2-2h10"/>',del:'<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
-  edit:'<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M14 6l4 4"/>',flip:'<path d="M4 12h16M8 8l-4 4 4 4M16 8l4 4-4 4"/>'};
-const FB_TITLE={rot:'回転（R）',mir:'左右反転（M）',dup:'複製（Ctrl+D）',del:'削除（Delete）',edit:'文字を編集',flip:'向きを変える'};
-const FB_ACTS={multi:['dup','del'],fix:['rot','mir','dup','del'],text:['edit','del'],open:['flip','del'],wall:['del'],dim:['del'],room:['del']};
+  edit:'<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M14 6l4 4"/>',add:'<path d="M12 5v14M5 12h14"/>',clear:'<path d="M6 6l12 12M18 6L6 18"/>',flip:'<path d="M4 12h16M8 8l-4 4 4 4M16 8l4 4-4 4"/>'};
+const FB_TITLE={rot:'回転（R）',mir:'左右反転（M）',dup:'複製（Ctrl+D）',del:'削除（Delete）',edit:'文字を編集',flip:'向きを変える',add:'タップで部屋を足す／外す',clear:'選択を解除（Esc）'};
+const FB_ACTS={multi:['dup','del'],fix:['rot','mir','dup','del'],text:['edit','del'],open:['flip','del'],wall:['del'],dim:['del'],room:['del'],area:['add','clear']};
 let fbKind=null;
 function selScreenBox(k){ const z=view.z, S=(x,y)=>[(x-view.x)*z,(y-view.y)*z];
   const segBox=g=>{ const [ax,ay]=S(g.x1,g.y1),[bx,by]=S(g.x2,g.y2); return [Math.min(ax,bx),Math.min(ay,by)-8,Math.max(ax,bx),Math.max(ay,by)+8]; };
@@ -1373,11 +1419,14 @@ function selScreenBox(k){ const z=view.z, S=(x,y)=>[(x-view.x)*z,(y-view.y)*z];
   if(k==='fix'){ const [fw,fh]=fixDims(selFix), [x,y]=S(selFix.x,selFix.y); return [x,y,x+fw*z,y+fh*z]; }
   if(k==='text'){ ctx.font=`${selText.size*z}px ${FONT}`; const [x,y]=S(selText.x,selText.y); return [x,y,x+ctx.measureText(selText.text).width,y+selText.size*z*1.2]; }
   if(k==='dim') return segBox(selDim); if(k==='open') return segBox(selOpen()); if(k==='wall') return segBox(selWall());
+  if(k==='area'){ const rs=areaRegions(); if(!rs.length) return null; let x1=Infinity,y1=Infinity,x2=-Infinity,y2=-Infinity; for(const r of rs) for(const [px,py] of r.poly){ const [sx,sy]=S(px,py); x1=Math.min(x1,sx); y1=Math.min(y1,sy); x2=Math.max(x2,sx); y2=Math.max(y2,sy); } return [x1,y1,x2,y2]; }
   if(k==='room'){ ensureRegions(); const r=regions.find(r=>r.props===selRoom); if(!r) return null; let x1=Infinity,y1=Infinity,x2=-Infinity,y2=-Infinity; for(const [px,py] of r.poly){ const [sx,sy]=S(px,py); x1=Math.min(x1,sx); y1=Math.min(y1,sy); x2=Math.max(x2,sx); y2=Math.max(y2,sy); } return [x1,y1,x2,y2]; }
   return null; }
 function placeFloatBar(){ const bar=$('#floatBar'); const k=drag||pinch?null:visKind(); const bx=k&&selScreenBox(k);
   if(!bx){ bar.style.display='none'; return; }
-  if(fbKind!==k){ fbKind=k; bar.innerHTML=''; for(const a of FB_ACTS[k]){ const b=document.createElement('button'); b.title=FB_TITLE[a]; if(a==='del') b.className='del'; b.innerHTML='<svg viewBox="0 0 24 24">'+FB_ICON[a]+'</svg>'; b.onclick=()=>{ doAction(a); b.blur(); }; bar.appendChild(b); } }
+  if(fbKind!==k){ fbKind=k; bar.innerHTML=''; for(const a of FB_ACTS[k]){ const b=document.createElement('button'); b.title=FB_TITLE[a]; if(a==='del') b.className='del'; b.innerHTML='<svg viewBox="0 0 24 24">'+FB_ICON[a]+'</svg>'; b.dataset.a=a; b.onclick=()=>{ doAction(a); b.blur(); }; bar.appendChild(b); }
+    if(k==='area'){ const sp=document.createElement('span'); sp.className='fbLabel'; bar.prepend(sp); } }
+  if(k==='area'){ const rs=areaRegions(); bar.querySelector('.fbLabel').textContent=rs.length+' 室 '+m2Tsubo(rs.reduce((a,r)=>a+r.area,0)); bar.querySelector('[data-a="add"]').classList.toggle('on',areaAdd); }
   bar.style.display='flex'; const bw=bar.offsetWidth, bh=bar.offsetHeight;
   let top=bx[1]-bh-10; if(top<4) top=bx[3]+10; top=clamp(top,4,Math.max(4,H-bh-30));
   bar.style.left=clamp((bx[0]+bx[2])/2-bw/2,4,Math.max(4,W-bw-4))+'px'; bar.style.top=top+'px'; }
