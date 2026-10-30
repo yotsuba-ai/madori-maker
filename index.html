@@ -70,6 +70,9 @@ canvas{display:block;touch-action:none;cursor:crosshair}
 .swatches button{aspect-ratio:1;padding:0;border-radius:6px;border:2px solid var(--line)}
 .swatches button.on{border-color:var(--ink)}
 .swatches .none{background:repeating-linear-gradient(45deg,#fff 0 4px,#ddd 4px 8px)}
+.tsize{display:flex;align-items:center;gap:6px;margin:8px 0;font-size:13px}
+.tsize input[type=range]{flex:1;min-width:0}
+.tsize input[type=number]{width:64px}
 .hint{font-size:12px;color:var(--muted);line-height:1.6;margin:6px 0}
 .seg{display:flex;gap:0;margin:6px 0}
 .seg button{flex:1;border-radius:0;font-size:12px;padding:6px 4px}
@@ -161,13 +164,13 @@ kbd{font:11px ui-monospace,monospace;background:#F0F2F5;border:1px solid var(--l
       <h2>壁</h2>
       <h3>厚さ</h3>
       <div class="seg" id="thickSeg">
-        <button data-th="thin">薄い</button><button data-th="normal" class="on">普通</button><button data-th="thick">厚い</button>
+        <button data-th="thin">薄い</button><button data-th="normal" class="on">普通</button><button data-th="thick">厚い</button><button data-th="line" title="壁の無い所を部屋として区切る線">区切り線</button>
       </div>
       <h3>角度</h3>
       <div class="seg" id="angleSeg">
         <button data-ang="ortho" class="on">縦横のみ</button><button data-ang="diag">45°</button><button data-ang="free">自由</button>
       </div>
-      <p class="hint">ドラッグで壁を引きます。始点と終点はグリッドに吸着します。「自由」ではグリッド点同士を結ぶどんな角度の壁も引けます。<br>厚さは 薄い 65mm / 普通 100mm / 厚い 150mm。新しく引く壁に適用され、<b>既存の壁をクリック</b>するとその壁の厚さが変わります（外壁は厚い、間仕切りは普通、など）。<br>ドアや窓の上に壁を引き直すと、ただの壁に戻ります。</p>
+      <p class="hint">ドラッグで壁を引きます。始点と終点はグリッドに吸着します。「自由」ではグリッド点同士を結ぶどんな角度の壁も引けます。<br>厚さは 薄い 65mm / 普通 100mm / 厚い 150mm。新しく引く壁に適用され、<b>既存の壁をクリック</b>するとその壁の厚さが変わります（外壁は厚い、間仕切りは普通、など）。<br>ドアや窓の上に壁を引き直すと、ただの壁に戻ります。<br><b>区切り線</b>は壁の無い所（LDK と廊下の境など）を部屋として区切る線です。画面では破線で表示し、JPEG には出ません。</p>
     </section>
 
     <section data-for="erase">
@@ -189,7 +192,7 @@ kbd{font:11px ui-monospace,monospace;background:#F0F2F5;border:1px solid var(--l
 
     <section data-for="room">
       <h2>部屋</h2>
-      <div id="roomNone" class="hint">壁で囲まれた場所をクリックすると、名前と色を設定できます。</div>
+      <div id="roomNone" class="hint">壁で囲まれた場所をクリックすると、名前と色を設定できます。壁の無い境目は、壁ツールの「区切り線」で閉じると部屋にできます。囲まれていない所をクリックすると、壁の切れ目を赤い丸で示します。</div>
       <hr>
       <label class="row">帖の換算
         <select id="joMode"><option value="module">910×1820=1帖</option><option value="m2">1.62㎡=1帖</option></select>
@@ -208,10 +211,9 @@ kbd{font:11px ui-monospace,monospace;background:#F0F2F5;border:1px solid var(--l
 
     <section data-for="text">
       <h2>文字</h2>
-      <label class="row">大きさ
-        <select id="textSize"><option value="320">小</option><option value="410" selected>中</option><option value="590">大</option></select>
-      </label>
-      <p class="hint">クリックで文字を置き、下の欄で内容を打ち込みます。置いた文字はクリックで選択、ドラッグで移動できます。</p>
+      <h3>大きさ（新しく置く文字）</h3>
+      <div class="tsize"><input type="range" id="textSizeR" min="100" max="2000" step="10"><input type="number" id="textSize" min="100" max="2000" step="10"> mm</div>
+      <p class="hint">クリックで文字を置き、下の欄で内容を打ち込みます。置いた文字はクリックで選択、ドラッグで移動できます。<br>大きさは文字の高さ（図面上の mm）です。選んだ文字は、右下の四角いつまみを引っ張っても大きさを変えられます。</p>
     </section>
 
     <section data-for="dim">
@@ -275,6 +277,7 @@ kbd{font:11px ui-monospace,monospace;background:#F0F2F5;border:1px solid var(--l
       <div id="textSel" class="selbox" style="display:none">
         <h3>選択中：文字</h3>
         <label class="row">内容 <input type="text" id="textInput" placeholder="例：バルコニー"></label>
+        <div class="tsize">大きさ <input type="range" id="selTextSizeR" min="100" max="2000" step="10"><input type="number" id="selTextSize" min="100" max="2000" step="10"> mm</div>
         <div class="stack"><button id="textDel" class="danger">この文字を削除</button></div>
       </div>
       <div id="roomSel" class="selbox" style="display:none">
@@ -298,7 +301,7 @@ kbd{font:11px ui-monospace,monospace;background:#F0F2F5;border:1px solid var(--l
       </div>
       <div id="wallSel" class="selbox" style="display:none">
         <h3>選択中：壁 <span id="wallLen"></span></h3>
-        <div class="seg" id="wallThSeg"><button data-th="thin">薄い</button><button data-th="normal">普通</button><button data-th="thick">厚い</button></div>
+        <div class="seg" id="wallThSeg"><button data-th="thin">薄い</button><button data-th="normal">普通</button><button data-th="thick">厚い</button><button data-th="line">区切り線</button></div>
         <div class="stack"><button id="wallDel" class="danger">この壁を削除</button></div>
       </div>
       <div id="multiSel" class="selbox" style="display:none">
@@ -325,7 +328,7 @@ const MOD = 455;
 const AREA_W = 36400, AREA_H = 27300;        // 作図範囲 mm（36.4m × 27.3m）
 const GRID_PRESETS = [910, 455, 300, 100, 50, 10];
 const GRID_MIN = 10, GRID_MAX = 2000, GRID_STEP = 5;   // 5mm 刻み（455 や 910 も指定できるように）
-const THICK = {thin:65, normal:100, thick:150};   // 壁厚 mm
+const THICK = {thin:65, normal:100, thick:150, line:1};   // 壁厚 mm。line は「区切り線」：壁の無い所を部屋として区切るための線（画面にだけ破線で出し、書き出しには出さない）
 const ANGLE_MODES = {ortho:'縦横のみ', diag:'45°まで', free:'自由'};
 const JO_MODULE_M2 = 0.91*1.82;   // 910×1820mm = 1帖（モジュール換算）
 const JO_M2 = 1.62;               // 不動産公正競争規約の換算：1帖 = 1.62㎡
@@ -883,6 +886,12 @@ function ensureRegions(){
   for(const r of regions){ let c=centroid(r.poly); if(!inRegion(c,r)) c=innerPoint(r,1,c[1]+0.37)||innerPoint(r,0,c[0]+0.37)||c; r.cx=c[0]; r.cy=c[1]; }
   for(const r of regions) r.props=state.rooms.find(rm=>regionAt(rm.pt)===r.id)||null;
 }
+// 壁・建具・区切り線の端のうち、ほかの線に触れていないもの（部屋が閉じない原因の候補）
+function looseEnds(){ const out=[];
+  for(const s of state.walls) for(const q of [[s.x1,s.y1],[s.x2,s.y2]]){
+    if(state.walls.some(g=>g!==s&&segDist(g,q)<0.5)) continue; if(!out.some(o=>Math.hypot(o[0]-q[0],o[1]-q[1])<0.5)) out.push(q); }
+  return out; }
+let gapMarks=null;   // 部屋ツールで囲まれていない所をクリックしたときに示す切れ目
 function regionAt(pt){ if(!regions) return -1; let best=null; for(const r of regions){ if(inRegion(pt,r)&&(!best||r.area<best.area)) best=r; } return best?best.id:-1; }
 function regionPath(r,S){ const p=new Path2D(); const ring=poly=>{ poly.forEach(([x,y],i)=>{ const [sx,sy]=S(x,y); i?p.lineTo(sx,sy):p.moveTo(sx,sy); }); p.closePath(); }; ring(r.poly); r.holes.forEach(ring); return p; }
 function areaText(areaMm2,mode){
@@ -994,7 +1003,10 @@ function drawScene(c,z,ox,oy,opt){
     if(f===selFix&&opt.ui){c.strokeStyle='#2B4C7E';c.setLineDash([4,3]);c.lineWidth=1;c.strokeRect(sx-3,sy-3,fw*z+6,fh*z+6);c.setLineDash([]);} }
   // 壁（線分ごとの厚さ。角が欠けないよう square cap）
   c.strokeStyle='#1B1B1B'; c.lineCap='square';
-  for(const s of state.walls){ if(s.o) continue; const [ax,ay]=S(s.x1,s.y1),[bx,by]=S(s.x2,s.y2); c.lineWidth=(THICK[s.th]||THICK.normal)*z; c.beginPath();c.moveTo(ax,ay);c.lineTo(bx,by);c.stroke(); }
+  for(const s of state.walls){ if(s.o||s.th==='line') continue; const [ax,ay]=S(s.x1,s.y1),[bx,by]=S(s.x2,s.y2); c.lineWidth=(THICK[s.th]||THICK.normal)*z; c.beginPath();c.moveTo(ax,ay);c.lineTo(bx,by);c.stroke(); }
+  if(opt.ui){ c.save(); c.strokeStyle='#6F84A3'; c.lineWidth=1.5; c.lineCap='butt'; c.setLineDash([6,4]);
+    for(const s of state.walls){ if(s.o||s.th!=='line') continue; const [ax,ay]=S(s.x1,s.y1),[bx,by]=S(s.x2,s.y2); c.beginPath();c.moveTo(ax,ay);c.lineTo(bx,by);c.stroke(); }
+    c.restore(); }
   // 建具（元の壁の厚さで描く）
   for(const g of state.walls){ if(!g.o) continue;
     const [ax,ay]=S(g.x1,g.y1),[bx,by]=S(g.x2,g.y2); const L=Math.hypot(bx-ax,by-ay);
@@ -1062,13 +1074,15 @@ function paint(){
     else if(preview.kind==='open') drawBand(ctx,S,preview.L,preview.from,preview.to,'rgba(43,76,126,.55)',t+6);
     else if(preview.kind==='dim'){ const [ax,ay]=S(preview.ax,preview.ay),[bx,by]=S(preview.bx,preview.by); drawDim(ctx,z,ax,ay,bx,by,Math.hypot(preview.bx-preview.ax,preview.by-preview.ay),'#2B4C7E'); }
   }
+  if(gapMarks&&tool==='room'){ ctx.save(); ctx.strokeStyle='#D0342C'; ctx.fillStyle='rgba(208,52,44,.18)'; ctx.lineWidth=2.5; ctx.setLineDash([]);
+    for(const q of gapMarks){ const [sx,sy]=S(q[0],q[1]); ctx.beginPath(); ctx.arc(sx,sy,11,0,7); ctx.fill(); ctx.stroke(); } ctx.restore(); }
   if(hover){ if(hover.pt){const [sx,sy]=S(hover.pt[0],hover.pt[1]); ctx.fillStyle='#2B4C7E'; ctx.beginPath();ctx.arc(sx,sy,4,0,7);ctx.fill();}
     if(hover.range) drawBand(ctx,S,hover.range.L,hover.range.from,hover.range.to,'rgba(43,76,126,.45)',t+6); }
   $('#undo').disabled=!hist.length; $('#redo').disabled=!redo.length;
   // 設定済みの部屋の面積合計
   let tot=0,n=0; for(const r of regions){ if(r.props){tot+=r.area;n++;} }
   const msg=n?`設定済み ${n} 部屋の合計：${areaText(tot,'both')}`:'部屋を設定すると、ここに面積の合計が出ます'; const el=$('#roomTotal'); if(el.textContent!==msg) el.textContent=msg;
-  const hs=(!drag||drag.mode==='resizeFix'||drag.mode==='resizeOpen'||drag.mode==='moveOpen')?selHandles():null;
+  const hs=(!drag||drag.mode==='resizeFix'||drag.mode==='resizeText'||drag.mode==='resizeOpen'||drag.mode==='moveOpen')?selHandles():null;
   if(hs){ const r=matchMedia('(pointer:coarse)').matches?7:5; for(const [id,x,y] of hs){ const [sx,sy]=S(x,y); ctx.fillStyle='#fff'; ctx.strokeStyle='#2B4C7E'; ctx.lineWidth=1.5; ctx.setLineDash([]);
     ctx.beginPath(); if(id==='a'||id==='b') ctx.arc(sx,sy,r+1,0,7); else ctx.rect(sx-r,sy-r,2*r,2*r); ctx.fill(); ctx.stroke(); } }
   placeFloatBar();
@@ -1089,8 +1103,9 @@ function selHandles(){ const k=visKind();
   if(k==='fix'){ const f=selFix, [fw,fh]=fixDims(f), x1=f.x, y1=f.y, x2=f.x+fw, y2=f.y+fh, mx=(x1+x2)/2, my=(y1+y2)/2;
     return [['nw',x1,y1],['n',mx,y1],['ne',x2,y1],['e',x2,my],['se',x2,y2],['s',mx,y2],['sw',x1,y2],['w',x1,my]]; }
   if(k==='open'){ const sg=selOpen(); return [['a',sg.x1,sg.y1],['b',sg.x2,sg.y2]]; }
+  if(k==='text'){ const b=textBox(selText); return [['ts',b[2],b[3]]]; }
   return null; }
-const HANDLE_CUR={nw:'nwse-resize',se:'nwse-resize',ne:'nesw-resize',sw:'nesw-resize',n:'ns-resize',s:'ns-resize',e:'ew-resize',w:'ew-resize',a:'grab',b:'grab'};
+const HANDLE_CUR={nw:'nwse-resize',se:'nwse-resize',ne:'nesw-resize',sw:'nesw-resize',n:'ns-resize',s:'ns-resize',e:'ew-resize',w:'ew-resize',a:'grab',b:'grab',ts:'nwse-resize'};
 function hitHandle(w){ const hs=selHandles(); if(!hs) return null; const tol=(matchMedia('(pointer:coarse)').matches?16:9)/view.z;
   for(const [id,x,y] of hs) if(Math.abs(w[0]-x)<=tol&&Math.abs(w[1]-y)<=tol) return id; return null; }
 const toolCursor=t=>t==='pan'?'grab':t==='erase'?'cell':t==='select'?'default':'crosshair';
@@ -1112,7 +1127,7 @@ function dragRange(d,w){ const L=d.L; const end=alongSnap(L,along(L,w));
 // ===== 入力 =====
 const pointers=new Map(); let drag=null, space=false, pinch=null;
 cv.addEventListener('pointerdown',e=>{
-  cv.setPointerCapture(e.pointerId); pointers.set(e.pointerId,[e.offsetX,e.offsetY]);
+  cv.setPointerCapture(e.pointerId); pointers.set(e.pointerId,[e.offsetX,e.offsetY]); if(e.button!==2) gapMarks=null;
   // 2本指：1本目で始めた操作は取り消して（動かしかけた設備なども元に戻す）、拡大縮小と画面移動に切り替える
   if(pointers.size===2){ if(drag&&lastSnap!==snap()){ applySnap(lastSnap); updatePanels(); } drag=null; preview=null; hover=null; const p=[...pointers.values()]; pinch={d:Math.hypot(p[0][0]-p[1][0],p[0][1]-p[1][1]),c:[(p[0][0]+p[1][0])/2,(p[0][1]+p[1][1])/2],view:{...view}}; return; }
   const w=toWorld(e.offsetX,e.offsetY);
@@ -1121,7 +1136,8 @@ cv.addEventListener('pointerdown',e=>{
   if(e.button===2||e.button===1||space||tool==='pan'){ drag={mode:'pan',sx:e.offsetX,sy:e.offsetY,vx:view.x,vy:view.y}; hover=null; cv.style.cursor='grabbing'; return; }
   if(e.button!==0) return;
   altDown=e.altKey;
-  if(tool==='select'||tool==='fix'||tool==='door'||tool==='window'){ const hid=hitHandle(w);
+  if(tool==='select'||tool==='fix'||tool==='door'||tool==='window'||tool==='text'){ const hid=hitHandle(w);
+    if(hid==='ts'){ const b=textBox(selText); drag={mode:'resizeText',t:selText,s0:selText.size,bw:b[2]-b[0],bh:b[3]-b[1],moved:false}; render(); return; }
     if(hid){ const k=visKind(); drag=k==='fix'?{mode:'resizeFix',f:selFix,id:hid,box0:[selFix.x,selFix.y,selFix.x+fixDims(selFix)[0],selFix.y+fixDims(selFix)[1]],moved:false}:startOpenDrag('resizeOpen',hid,w); render(); return; } }
   const startLine=(mode,seg,extra)=>{ const L=lineOf(seg); const t=along(L,w); drag={mode,seg,L,p0:t,a0:alongFloor(L,t),s0:alongSnap(L,t),moved:false,...extra}; preview={kind:mode,...dragRange(drag,w)}; };
   switch(tool){
@@ -1170,6 +1186,8 @@ cv.addEventListener('pointermove',e=>{
     case 'dim': { const b=snapPt(w); preview={kind:'dim',ax:drag.a[0],ay:drag.a[1],bx:b[0],by:b[1]}; break; }
     case 'erase': case 'open': { const t=along(drag.L,w); if(alongSnap(drag.L,t)!==drag.s0&&Math.abs(t-drag.p0)>4/view.z) drag.moved=true; preview={kind:drag.mode,...dragRange(drag,w)}; break; }
     case 'moveText': { const nx=snapV(w[0]-drag.ox), ny=snapV(w[1]-drag.oy); if(nx!==drag.t.x||ny!==drag.t.y){drag.t.x=nx;drag.t.y=ny;drag.moved=true;} break; }
+    case 'resizeText': { const d=drag, t=d.t, dx=w[0]-t.x, dy=w[1]-t.y, k=(dx*d.bw+dy*d.bh)/(d.bw*d.bw+d.bh*d.bh);   // 対角線方向に引いた割合で拡大縮小
+      t.size=textSize=tsClamp(d.s0*k); d.moved=true; syncTextSize(); break; }
     case 'resizeFix': { const d=drag, f=d.f, [x1,y1,x2,y2]=d.box0, MIN=100, px=objSnap(w[0]), py=objSnap(w[1]); let nx1=x1,ny1=y1,nx2=x2,ny2=y2;
       if(d.id.includes('w')) nx1=Math.min(px,x2-MIN); if(d.id.includes('e')) nx2=Math.max(px,x1+MIN);
       if(d.id.includes('n')) ny1=Math.min(py,y2-MIN); if(d.id.includes('s')) ny2=Math.max(py,y1+MIN);
@@ -1206,6 +1224,7 @@ function endPointer(e){
       if(r.x2-r.x1<200||r.y2-r.y1<200){ setStatus('範囲が小さすぎます。もう一度ドラッグで囲んでください（Esc で中止）'); break; }
       setExportPick(false); saveJpeg(r); break; }
     case 'resizeFix': if(d.moved) commit(); updateFixPanel(); break;
+    case 'resizeText': if(d.moved) commit(); updateTextPanel(); break;
     case 'resizeOpen': case 'moveOpen': if(d.moved) commit(); updatePanels(); break;
   }
   render();
@@ -1243,12 +1262,21 @@ function setTool(t){ tool=t; if(t!=='select'){ if(t!=='door'&&t!=='window') selO
 $$('#rail button').forEach(b=>b.onclick=()=>setTool(b.dataset.tool));
 $$('#thickSeg button').forEach(b=>b.onclick=()=>{state.thick=b.dataset.th; $$('#thickSeg button').forEach(x=>x.classList.toggle('on',x===b)); save(); render();});
 $$('#angleSeg button').forEach(b=>b.onclick=()=>{state.angle=b.dataset.ang; $$('#angleSeg button').forEach(x=>x.classList.toggle('on',x===b)); setStatus(hintOf(tool)); save();});
-$('#textSize').onchange=e=>{ textSize=+e.target.value; if(selText){ selText.size=textSize; commit(); } };
+// 文字の大きさ（文字の高さ mm、100〜2000）。スライダーは動かしている間も反映し、離したときに履歴に残す
+const TS_MIN=100, TS_MAX=2000, tsClamp=v=>clamp(Math.round((+v||410)/10)*10,TS_MIN,TS_MAX);
+function syncTextSize(){ for(const id of ['#textSize','#textSizeR']) if(document.activeElement!==$(id)) $(id).value=textSize;
+  if(selText) for(const id of ['#selTextSize','#selTextSizeR']) if(document.activeElement!==$(id)) $(id).value=selText.size; }
+$('#textSizeR').oninput=e=>{ textSize=tsClamp(e.target.value); syncTextSize(); };
+$('#textSize').onchange=e=>{ textSize=tsClamp(e.target.value); e.target.value=textSize; syncTextSize(); e.target.blur(); };
+$('#selTextSizeR').oninput=e=>{ if(!selText) return; selText.size=textSize=tsClamp(e.target.value); syncTextSize(); render(); };
+$('#selTextSizeR').onchange=()=>{ if(selText) commit(); };
+$('#selTextSize').onchange=e=>{ if(!selText) return; selText.size=textSize=tsClamp(e.target.value); e.target.value=selText.size; syncTextSize(); commit(); e.target.blur(); };
+syncTextSize();
 $('#joMode').onchange=e=>{state.joMode=e.target.value; save(); render();};
 $('#dimUnit').onchange=e=>{state.dimUnit=e.target.value; save(); render();};
 
 // 文字の選択パネル
-function updateTextPanel(){ const t=selText&&state.texts.includes(selText)?selText:null; if(!t) selText=null; $('#textSel').style.display=(t&&(tool==='text'||tool==='select'))?'':'none'; if(!t) return; if(document.activeElement!==$('#textInput')) $('#textInput').value=t.text; }
+function updateTextPanel(){ const t=selText&&state.texts.includes(selText)?selText:null; if(!t) selText=null; $('#textSel').style.display=(t&&(tool==='text'||tool==='select'))?'':'none'; if(!t) return; if(document.activeElement!==$('#textInput')) $('#textInput').value=t.text; syncTextSize(); }
 $('#textInput').oninput=e=>{ if(selText){ selText.text=e.target.value; render(); } };
 $('#textInput').onchange=e=>{ if(!selText) return; if(!e.target.value.trim()){ e.target.value=selText.text||'文字'; selText.text=e.target.value; } commit(); };
 $('#textInput').onkeydown=e=>{ if(e.key==='Enter'||e.key==='Escape'){ e.target.blur(); } };
@@ -1284,7 +1312,9 @@ $('#gridInput').onchange=e=>{ setGrid(e.target.value); e.target.blur(); };
 
 // 部屋
 function selectRoomAt(w){ ensureRegions(); const id=regionAt(w);
-  if(id<0){ selRoom=null; updateRoomPanel(); setStatus('ここは壁で囲まれていません。先に壁で囲ってください'); render(); return; }
+  if(id<0){ selRoom=null; updateRoomPanel(); gapMarks=looseEnds();
+    setStatus(gapMarks.length?'ここは壁で囲まれていません。赤い丸の所で壁が途切れています。壁を延ばすか、壁の無い境目は壁ツールの「区切り線」で閉じてください'
+      :'ここは壁で囲まれていません。壁の無い境目は、壁ツールの「区切り線」で閉じると部屋にできます'); render(); return; }
   const r=regions[id]; if(!r.props){ r.props={pt:[w[0],w[1]],name:'',color:null,area:'jo'}; state.rooms.push(r.props); lastSnap=snap(); }
   selRoom=r.props; updateRoomPanel(); render(); }
 function updateRoomPanel(){ const on=!!selRoom; $('#roomNone').style.display=on?'none':''; $('#roomSel').style.display=on&&(tool==='room'||tool==='select')?'':'none'; if(!on) return;
