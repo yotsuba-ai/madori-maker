@@ -768,7 +768,16 @@ function placeSegs(list){ const th0=state.thick;
   state.thick=th0;
   for(const g of list){ if(!g.o) continue; const L=lineOf(g); replaceRange(L,along(L,[g.x1,g.y1]),along(L,[g.x2,g.y2]),{...g.o}); } }
 const shiftSeg=(g,dx,dy)=>({...g,x1:g.x1+dx,y1:g.y1+dy,x2:g.x2+dx,y2:g.y2+dy,o:g.o?{...g.o}:null});
+// 移動量をグリッドに合わせる。動かす壁の端点（＝壁の中心線）がいちばん多くグリッドに乗る量を選ぶ。
+// 元の壁がグリッドからずれていても、移動すると中心線がグリッドに戻る。壁が無いときはグリッド幅ごとに動かす
+function gridResidues(vals){ const g=state.grid, m=new Map();
+  for(const v of vals){ const r=Math.round((((v%g)+g)%g)*10)/10, k=r>=g-0.05?0:r; const e=m.get(k); if(e) e.n++; else m.set(k,{v,n:1}); }
+  return [...m.values()]; }
+function gridDelta(res,r){ if(!res.length) return snapV(r); let best=snapV(r), bn=-1, bd=Infinity;
+  for(const {v,n} of res){ const c=Math.round((snapV(v+r)-v)*1000)/1000, dd=Math.abs(c-r); if(n>bn||(n===bn&&dd<bd)){ best=c; bn=n; bd=dd; } }
+  return best; }
 function startMultiMove(w){ const segs=multiSegs(); return {mode:'moveMulti',w0:w,moved:false,dx:0,dy:0,
+  resX:gridResidues(segs.flatMap(g=>[g.x1,g.x2])), resY:gridResidues(segs.flatMap(g=>[g.y1,g.y2])),
   fix:multi.fix.map(f=>[f.x,f.y]), text:multi.text.map(t=>[t.x,t.y]), dim:multi.dim.map(d=>[d.x1,d.y1,d.x2,d.y2]), room:multi.room.map(q=>q.poly?q.poly.map(p=>[...p]):[...q.pt]), area:(multi.areaPts||[]).map(q=>[...q]),
   walls0:state.walls.map(g=>({...g,o:g.o?{...g.o}:null})), idx:new Set(segs.map(g=>state.walls.indexOf(g))), segPts0:multi.segPts.map(q=>[...q])}; }
 // 移動量 dx,dy を元の位置から当てはめる（ドラッグ中は壁を重ねて仮表示、確定時に placeSegs で置き直す）
@@ -1218,7 +1227,7 @@ cv.addEventListener('pointermove',e=>{
     case 'room': if(Math.hypot(e.offsetX-drag.sx,e.offsetY-drag.sy)>6) drag.moved=true; drag.b=snapCorner(w); break;
     case 'roomVert': { const q=snapCorner(w); drag.rm.poly[drag.i]=q; drag.moved=true; break; }
     case 'moveMulti': { const d=drag, rx=w[0]-d.w0[0], ry=w[1]-d.w0[1]; if(!d.moved&&Math.hypot(rx,ry)*view.z<4) break; d.moved=true;
-      const dx=isFree()?Math.round(rx):snapV(rx), dy=isFree()?Math.round(ry):snapV(ry); if(dx!==d.dx||dy!==d.dy) applyMultiMove(d,dx,dy,false); break; }
+      const dx=isFree()?Math.round(rx):gridDelta(d.resX,rx), dy=isFree()?Math.round(ry):gridDelta(d.resY,ry); if(dx!==d.dx||dy!==d.dy) applyMultiMove(d,dx,dy,false); break; }
     case 'wall': { const b=constrainEnd(drag.a,snapPt(w)); preview={kind:'wall',ax:drag.a[0],ay:drag.a[1],bx:b[0],by:b[1]}; break; }
     case 'dim': { const b=snapPt(w); preview={kind:'dim',ax:drag.a[0],ay:drag.a[1],bx:b[0],by:b[1]}; break; }
     case 'erase': case 'open': { const t=along(drag.L,w); if(alongSnap(drag.L,t)!==drag.s0&&Math.abs(t-drag.p0)>4/view.z) drag.moved=true; preview={kind:drag.mode,...dragRange(drag,w)}; break; }
