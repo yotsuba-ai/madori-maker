@@ -148,8 +148,10 @@ kbd{font:11px ui-monospace,monospace;background:#F0F2F5;border:1px solid var(--l
     <div id="gridBox">
       <h2>グリッド</h2>
       <div class="chips" id="gridPresets"></div>
+      <h3>910mm を基準に</h3>
+      <div class="chips" id="gridFrac"></div>
       <label class="row">任意の間隔 <span><input type="number" id="gridInput" min="10" max="2000" step="5"> mm</span></label>
-      <p class="hint">壁・ドア・設備・文字はこの間隔に吸着します。10〜2000mm を 5mm 刻みで指定できます。</p>
+      <p class="hint">壁・ドア・設備・文字はこの間隔に吸着します。10〜2000mm を 5mm 刻みで指定できます（227.5 と 113.75 も指定できます）。</p>
       <label class="row"><span><input type="checkbox" id="freePlace"> 設備・建具はグリッドに吸着させない（自由配置）</span></label>
       <p class="hint"><kbd>Alt</kbd> を押しながら動かすと、その間だけ吸着の有無が逆になります。</p>
     </div>
@@ -330,6 +332,7 @@ kbd{font:11px ui-monospace,monospace;background:#F0F2F5;border:1px solid var(--l
 const MOD = 455;
 const AREA_W = 36400, AREA_H = 27300;        // 作図範囲 mm（36.4m × 27.3m）
 const GRID_PRESETS = [910, 455, 300, 100, 50, 10];
+const GRID_FRACS = [[2,'1/2'],[4,'1/4'],[8,'1/8']].map(([n,name])=>({g:910/n,name}));   // 910mm の分数。227.5 と 113.75 は 5mm 刻みに丸めず、そのまま持つ
 const GRID_MIN = 10, GRID_MAX = 2000, GRID_STEP = 5;   // 5mm 刻み（455 や 910 も指定できるように）
 const THICK = {thin:65, normal:100, thick:150, line:1};   // 壁厚 mm。line は「区切り線」：壁の無い所を部屋として区切るための線（画面にだけ破線で出し、書き出しには出さない）
 const ANGLE_MODES = {ortho:'縦横のみ', diag:'45°まで', free:'自由'};
@@ -1307,7 +1310,7 @@ window.addEventListener('keyup',e=>{if(e.code==='Space')space=false;});
 const HINTS={select:'クリックで選択、何もない所からドラッグで囲むとまとめて選択。設備・文字・建具はドラッグで移動、四角／丸のつまみを引いてサイズ変更、Deleteで削除、Escで解除',erase:'ドア・窓をクリックで壁に戻す。壁はクリックで1グリッド分、なぞった範囲が消える。文字・設備・寸法線はクリックで削除',room:'クリック：壁で囲まれた場所を部屋に／ドラッグ：四角で部屋を作る（壁が無くても可）',fix:'クリックで配置（パターンは右の欄で選択）。ドラッグで移動、Rで回転、Mで反転、Ctrl+Dで複製',text:'クリックで文字を置き、パネルの欄で内容を編集。文字をクリックで選択、ドラッグで移動',dim:'ドラッグで寸法線を引きます（両端はグリッドに吸着）',pan:'ドラッグで移動、ホイールで拡大縮小（どのツールでも右ドラッグで移動できます）'};
 function hintOf(t){ if(t==='room'&&roomMode==='poly') return '部屋の角を順にクリック。最初の角をクリック（または Enter）で完成'; if(t==='wall') return 'ドラッグで壁を引きます（'+ANGLE_MODES[state.angle]+'・グリッドに吸着）。既存の壁をクリックで厚さを変更'; if(t==='door'||t==='window'){ const o=OPEN[curSub()]; return o.name+'（標準幅 '+o.w+'mm）：壁をクリックで配置、ドラッグで幅指定。配置済みをクリックで選択'; } return HINTS[t]; }
 let statusMsg='';
-function setStatus(msg){ statusMsg=msg; $('#status').textContent='グリッド '+state.grid+'mm'+(state.freePlace?'（設備・建具は自由配置）':'')+' ｜ '+msg; }
+function setStatus(msg){ statusMsg=msg; $('#status').textContent='グリッド '+gridLabel()+(state.freePlace?'（設備・建具は自由配置）':'')+' ｜ '+msg; }
 function setTool(t){ if(t!=='room') roomDraft=null; tool=t; if(t!=='select'){ if(t!=='door'&&t!=='window') selOpenPt=null; if(t!=='text') selText=null; selWallPt=null; selDim=null; }
   $$('#rail button').forEach(b=>b.classList.toggle('on',b.dataset.tool===t)); $$('#panel section').forEach(s=>s.classList.toggle('on',s.dataset.for===t)); setStatus(hintOf(t)); cv.style.cursor=toolCursor(t); hover=null; updatePanels(); render(); }
 $$('#rail button').forEach(b=>b.onclick=()=>setTool(b.dataset.tool));
@@ -1355,10 +1358,13 @@ $('#openFlip').onclick=()=>{ const s=selOpen(); if(!s) return; cycleFlip(s); com
 $('#openDel').onclick=()=>{ const s=selOpen(); if(!s) return; const L=lineOf(s); replaceRange(L,L.a,L.b,null); selOpenPt=null; commit(); updateOpenPanel(); };
 
 // グリッド
-function clampGrid(v){ const n=+v; if(!isFinite(n)||n<=0) return state.grid; return clamp(Math.round(n/GRID_STEP)*GRID_STEP,GRID_MIN,GRID_MAX); }
+// 状況欄のグリッド表示。910mm の分数に当たるときは分数も出す
+const gridLabel=()=>{ const fr=GRID_FRACS.find(q=>q.g===state.grid); return fr?fr.name+'（'+fr.g+'mm）':state.grid+'mm'; };
+function clampGrid(v){ const n=+v; if(!isFinite(n)||n<=0) return state.grid; const fr=GRID_FRACS.find(q=>Math.abs(q.g-n)<0.01); if(fr) return fr.g; return clamp(Math.round(n/GRID_STEP)*GRID_STEP,GRID_MIN,GRID_MAX); }
 function setGrid(v){ state.grid=clampGrid(v); updateGridPanel(); setStatus(statusMsg); save(); render(); }
-function updateGridPanel(){ $$('#gridPresets button').forEach(b=>b.classList.toggle('on',+b.dataset.g===state.grid)); $('#gridInput').value=state.grid; }
+function updateGridPanel(){ $$('#gridPresets button,#gridFrac button').forEach(b=>b.classList.toggle('on',+b.dataset.g===state.grid)); $('#gridInput').value=state.grid; }
 for(const g of GRID_PRESETS){ const b=document.createElement('button'); b.textContent=g; b.dataset.g=g; b.onclick=()=>setGrid(g); $('#gridPresets').appendChild(b); }
+for(const q of GRID_FRACS){ const b=document.createElement('button'); b.textContent=q.name+'（'+q.g+'）'; b.dataset.g=q.g; b.onclick=()=>setGrid(q.g); $('#gridFrac').appendChild(b); }
 $('#gridInput').onchange=e=>{ setGrid(e.target.value); e.target.blur(); };
 
 // 部屋
