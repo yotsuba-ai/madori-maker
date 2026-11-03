@@ -172,12 +172,12 @@ kbd{font:11px ui-monospace,monospace;background:#F0F2F5;border:1px solid var(--l
       <div class="seg" id="angleSeg">
         <button data-ang="ortho" class="on">縦横のみ</button><button data-ang="diag">45°</button><button data-ang="free">自由</button>
       </div>
-      <p class="hint">ドラッグで壁を引きます。始点と終点はグリッドに吸着します。「自由」ではグリッド点同士を結ぶどんな角度の壁も引けます。<br>厚さは 薄い 65mm / 普通 100mm / 厚い 150mm。新しく引く壁に適用され、<b>既存の壁をクリック</b>するとその壁の厚さが変わります（外壁は厚い、間仕切りは普通、など）。<br>ドアや窓の上に壁を引き直すと、ただの壁に戻ります。<br><b>区切り線</b>は壁の無い所（LDK と廊下の境など）を部屋として区切る線です。画面では破線で表示し、JPEG には出ません。</p>
+      <p class="hint">ドラッグで壁を引きます。<b>Shift を押しながら引くと縦か横にまっすぐ</b>引けます。「自由」でも、ほぼ縦横なら自動でまっすぐにそろえます。<br>既存の壁の端や線の近くでは、グリッドより先に壁へ吸着します（緑の丸が目印。Alt を押している間はグリッドだけ）。<br>始点と終点はグリッドに吸着します。「自由」ではグリッド点同士を結ぶどんな角度の壁も引けます。<br>厚さは 薄い 65mm / 普通 100mm / 厚い 150mm。新しく引く壁に適用され、<b>既存の壁をクリック</b>するとその壁の厚さが変わります（外壁は厚い、間仕切りは普通、など）。<br>ドアや窓の上に壁を引き直すと、ただの壁に戻ります。<br><b>区切り線</b>は壁の無い所（LDK と廊下の境など）を部屋として区切る線です。画面では破線で表示し、JPEG には出ません。</p>
     </section>
 
     <section data-for="erase">
       <h2>消す</h2>
-      <p class="hint"><b>ドア・窓をクリック</b>すると、その建具が消えてただの壁に戻ります。<br><b>壁をクリック</b>すると 1 グリッド分、<b>壁に沿ってなぞる</b>とその範囲の壁が消えます（両端はグリッドに吸着）。長い壁の一部だけ消して開口をつくることもできます。<br>文字・設備はクリックで削除します。</p>
+      <p class="hint"><b>ドア・窓をクリック</b>すると、その建具が消えてただの壁に戻ります。<br><b>壁をクリック</b>すると 1 グリッド分（グリッドが 100mm 未満のときは、交わる壁から交わる壁まで）、<b>壁に沿ってなぞる</b>とその範囲の壁が消えます（両端はグリッドに吸着）。長い壁の一部だけ消して開口をつくることもできます。<br>文字・設備はクリックで削除します。</p>
     </section>
 
     <section data-for="door">
@@ -803,12 +803,19 @@ function selOpen(){ if(!selOpenPt) return null; const s=nearestSeg(selOpenPt,1);
 // 選択中の建具の幅を、中心を保ったまま変える
 function setOpeningWidth(w){ const s=selOpen(); if(!s) return; const L=lineOf(s), c=(L.a+L.b)/2, o={...s.o}; replaceRange(L,L.a,L.b,null); replaceRange(L,c-w/2,c+w/2,o); const [x,y]=P(L,c); selOpenPt=[x,y]; commit(); updateOpenPanel(); }
 // 壁の終点を角度モードに合わせて補正する（始点・終点ともグリッド点）
+// 終点をまっすぐにそろえる。Shift なら必ず縦か横、それ以外は縦横から画面で 8px 以内のときだけそろえる（Alt で無効）
+function straightEnd(a,b){ const dx=b[0]-a[0], dy=b[1]-a[1];
+  if(shiftDown) return Math.abs(dx)>=Math.abs(dy)?[b[0],a[1]]:[a[0],b[1]];
+  if(altDown) return b; const tol=8/view.z;
+  if(Math.abs(dy)<=tol&&Math.abs(dx)>tol) return [b[0],a[1]]; if(Math.abs(dx)<=tol&&Math.abs(dy)>tol) return [a[0],b[1]];
+  return b; }
 function constrainEnd(a,b){ const [ax,ay]=a; let [bx,by]=b; const dx=bx-ax, dy=by-ay;
+  if(shiftDown&&state.angle!=='diag') return straightEnd(a,b);
   if(state.angle==='ortho') return Math.abs(dx)>=Math.abs(dy)?[bx,ay]:[ax,by];
   if(state.angle==='diag'){ const g=state.grid, k=((Math.round(Math.atan2(dy,dx)/(Math.PI/4))%8)+8)%8; const d=[[1,0],[1,1],[0,1],[-1,1],[-1,0],[-1,-1],[0,-1],[1,-1]][k];
     const m=Math.round((d[0]&&d[1]?(Math.abs(dx)+Math.abs(dy))/2:Math.max(Math.abs(dx),Math.abs(dy)))/g)*g;
     return [clamp(ax+d[0]*m,0,AREA_W),clamp(ay+d[1]*m,0,AREA_H)]; }
-  return [bx,by]; }
+  return straightEnd(a,b); }
 function addWallLine(a,b){ const e=constrainEnd(a,b); if(Math.hypot(e[0]-a[0],e[1]-a[1])<0.5) return false; const L=lineOf(mkSeg(a[0],a[1],e[0],e[1])); return replaceRange(L,along(L,a),along(L,e),null); }
 // 設備のパターン。v が無い旧データは legacy（無ければ先頭）
 function fixVar(f){ const d=FIX[f.type]; return (f.v&&d.vars.find(x=>x.id===f.v))||(!f.v&&d.legacy&&d.vars.find(x=>x.id===d.legacy))||d.vars[0]; }
@@ -1105,7 +1112,7 @@ function paint(){
     ctx.strokeStyle='#2B4C7E'; ctx.lineWidth=1.5; ctx.setLineDash([6,4]); ctx.strokeRect(x,y,w2,h2); ctx.setLineDash([]);
     const mw=Math.abs(drag.b[0]-drag.a[0]), mh=Math.abs(drag.b[1]-drag.a[1]); ctx.font='12px sans-serif'; ctx.fillStyle='#2B4C7E'; ctx.textAlign='left'; ctx.textBaseline='bottom'; ctx.fillText(fmtM(mw)+' × '+fmtM(mh),x+4,y-4); }
   if(preview){
-    if(preview.kind==='wall'){ const [ax,ay]=S(preview.ax,preview.ay),[bx,by]=S(preview.bx,preview.by); ctx.strokeStyle='rgba(43,76,126,.8)'; ctx.lineWidth=t; ctx.lineCap='square'; ctx.beginPath();ctx.moveTo(ax,ay);ctx.lineTo(bx,by);ctx.stroke();
+    if(preview.kind==='wall'){ const [ax,ay]=S(preview.ax,preview.ay),[bx,by]=S(preview.bx,preview.by); ctx.strokeStyle='rgba(43,76,126,.8)'; ctx.lineWidth=t; ctx.lineCap='square'; ctx.beginPath();ctx.moveTo(ax,ay);ctx.lineTo(bx,by);ctx.stroke(); if(preview.k) snapRing(ctx,bx,by);
       const len=Math.hypot(preview.bx-preview.ax,preview.by-preview.ay); if(len){ctx.font='12px sans-serif';ctx.fillStyle='#2B4C7E';ctx.textAlign='left';ctx.textBaseline='bottom';ctx.fillText(fmtM(len),(ax+bx)/2+6,(ay+by)/2-6);} }
     else if(preview.kind==='erase') drawBand(ctx,S,preview.L,preview.from,preview.to,'rgba(165,38,44,.55)',t+8);
     else if(preview.kind==='open') drawBand(ctx,S,preview.L,preview.from,preview.to,'rgba(43,76,126,.55)',t+6);
@@ -1119,7 +1126,7 @@ function paint(){
     ctx.restore(); }
   if(gapMarks&&tool==='room'){ ctx.save(); ctx.strokeStyle='#D0342C'; ctx.fillStyle='rgba(208,52,44,.18)'; ctx.lineWidth=2.5; ctx.setLineDash([]);
     for(const q of gapMarks){ const [sx,sy]=S(q[0],q[1]); ctx.beginPath(); ctx.arc(sx,sy,11,0,7); ctx.fill(); ctx.stroke(); } ctx.restore(); }
-  if(hover){ if(hover.pt){const [sx,sy]=S(hover.pt[0],hover.pt[1]); ctx.fillStyle='#2B4C7E'; ctx.beginPath();ctx.arc(sx,sy,4,0,7);ctx.fill();}
+  if(hover){ if(hover.pt){const [sx,sy]=S(hover.pt[0],hover.pt[1]); ctx.fillStyle='#2B4C7E'; ctx.beginPath();ctx.arc(sx,sy,4,0,7);ctx.fill(); if(hover.pt.k) snapRing(ctx,sx,sy);}
     if(hover.range) drawBand(ctx,S,hover.range.L,hover.range.from,hover.range.to,'rgba(43,76,126,.45)',t+6); }
   $('#undo').disabled=!hist.length; $('#redo').disabled=!redo.length;
   // 設定済みの部屋の面積合計
@@ -1138,7 +1145,7 @@ function hitDim(w){ const tol=10/view.z; for(let i=state.dims.length-1;i>=0;i--)
 const alongFloor=(L,t)=>L.a+Math.floor((t-L.a)/state.grid)*state.grid;
 const alongSnap=(L,t)=>L.a+Math.round((t-L.a)/state.grid)*state.grid;
 // 設備・建具の移動とサイズ変更の吸着。自由配置（または Alt で反転）なら 1mm 単位
-let altDown=false;
+let altDown=false, shiftDown=false;
 const isFree=()=>state.freePlace!==altDown;
 const objSnap=v=>isFree()?Math.round(v):snapV(v);
 // 選択中の設備・建具のつまみ（サイズ変更用）。設備は四隅と辺の中点、建具は両端
@@ -1157,6 +1164,17 @@ const toolCursor=t=>t==='pan'?'grab':t==='erase'?'cell':t==='select'?'default':'
 // 建具を区間 [a,b] から [na,nb] へ置き直す（ドラッグ中は開始時の壁から毎回やり直す）
 function placeOpening(d,na,nb){ state.walls=d.walls0.map(g=>({...g,o:g.o?{...g.o}:null})); replaceRange(d.L,d.a,d.b,null); replaceRange(d.L,na,nb,d.o);
   selOpenPt=P(d.L,(na+nb)/2); regions=null; d.moved=true; $('#openW').value=Math.round(nb-na); }
+function snapRing(c,x,y){ c.save(); c.strokeStyle='#1E8E5A'; c.lineWidth=2; c.lineCap='butt'; c.setLineDash([]); c.beginPath(); c.arc(x,y,8,0,7); c.stroke(); c.restore(); }
+// 壁・寸法線を引く点。壁の端（12px 以内）→ 壁の線上（8px 以内）→ 他の壁の端と縦横をそろえる（8px 以内）→ グリッドの順に吸着する。Alt ならグリッドだけ
+function snapDraw(w){ if(altDown) return snapPt(w); const tolE=12/view.z, tol=8/view.z; let best=null,bd=tolE;
+  for(const g of state.walls) for(const q of [[g.x1,g.y1],[g.x2,g.y2]]){ const d=Math.hypot(q[0]-w[0],q[1]-w[1]); if(d<bd){bd=d;best=q;} }
+  if(best){ const r=[best[0],best[1]]; r.k='end'; return r; }
+  const base=snapPt(w), sg=nearestSeg(w,tol);
+  if(sg){ let r; if(sg.y1===sg.y2) r=[clamp(base[0],Math.min(sg.x1,sg.x2),Math.max(sg.x1,sg.x2)),sg.y1]; else if(sg.x1===sg.x2) r=[sg.x1,clamp(base[1],Math.min(sg.y1,sg.y2),Math.max(sg.y1,sg.y2))];
+    else { const L=lineOf(sg), q=P(L,clamp(along(L,w),L.a,L.b)); r=[Math.round(q[0]),Math.round(q[1])]; } r.k='wall'; return r; }
+  let bx=tol,by=tol,x=base[0],y=base[1];
+  for(const g of state.walls) for(const q of [[g.x1,g.y1],[g.x2,g.y2]]){ const ex=Math.abs(q[0]-w[0]), ey=Math.abs(q[1]-w[1]); if(ex<bx){bx=ex;x=q[0];} if(ey<by){by=ey;y=q[1];} }
+  return [x,y]; }
 function startOpenDrag(mode,id,w){ const sg=selOpen(), L=lineOf(sg); return {mode,id,L,a:L.a,b:L.b,o:{...sg.o},t0:along(L,w),walls0:state.walls.map(g=>({...g,o:g.o?{...g.o}:null})),moved:false}; }
 const alongObj=(L,w)=>isFree()?Math.round(along(L,w)):along(L,[snapV(w[0]),snapV(w[1])]);
 const curSub=()=>tool==='window'?winSub:doorSub;
@@ -1164,7 +1182,10 @@ const curSub=()=>tool==='window'?winSub:doorSub;
 function hoverRangeOn(seg,w){ const L=lineOf(seg); if(seg.o) return {L,from:L.a,to:L.b}; const c=alongSnap(L,along(L,w)), hw=OPEN[curSub()].w/2; return {L,from:clamp(c-hw,L.a,L.b),to:clamp(c+hw,L.a,L.b)}; }
 // ドラッグ中の区間。open はクリックなら標準幅・ドラッグなら開始マスから広げる、erase はなぞった範囲そのもの（クリックなら開始マス）
 // 動かさずに既存の建具をクリックした場合は、その建具全体を対象にする（消す→壁に戻す、建具ツール→種類を変える）
+// 細かいグリッド（100mm 未満）で壁をクリックしたときは、1 マスではなく前後の交点までを消す
+function junctionRange(seg,L,t){ let from=L.a,to=L.b; for(const g of state.walls){ if(g===seg) continue; for(const q of [[g.x1,g.y1],[g.x2,g.y2]]){ if(segDist(seg,q)>=0.5) continue; const u=along(L,q); if(u<=t&&u>from) from=u; if(u>=t&&u<to) to=u; } } return {L,from,to}; }
 function dragRange(d,w){ const L=d.L; const end=alongSnap(L,along(L,w));
+  if(d.mode==='erase'&&!d.moved&&!d.seg.o&&state.grid<100) return junctionRange(d.seg,L,d.p0);
   if(!d.moved&&d.seg.o) return {L,from:L.a,to:L.b};
   if(d.mode==='open'){ if(!d.moved){ const hw=OPEN[d.sub].w/2; return {L,from:d.s0-hw,to:d.s0+hw}; } return {L,from:Math.min(d.a0,end),to:Math.max(d.a0+state.grid,end)}; }
   return d.moved?{L,from:Math.min(d.s0,end),to:Math.max(d.s0,end)}:{L,from:d.a0,to:d.a0+state.grid}; }
@@ -1180,20 +1201,20 @@ cv.addEventListener('pointerdown',e=>{
   if(exportPick&&e.button===0){ drag={mode:'exportRect',a:w,b:w}; render(); return; }
   if(e.button===2||e.button===1||space||tool==='pan'){ drag={mode:'pan',sx:e.offsetX,sy:e.offsetY,vx:view.x,vy:view.y}; hover=null; cv.style.cursor='grabbing'; return; }
   if(e.button!==0) return;
-  altDown=e.altKey;
+  altDown=e.altKey; shiftDown=e.shiftKey;
   if(tool==='select'||tool==='fix'||tool==='door'||tool==='window'||tool==='text'||(tool==='room'&&roomMode!=='poly')){ const hid=hitHandle(w);
     if(hid&&hid[0]==='r'){ drag={mode:'roomVert',rm:selRoom,i:+hid.slice(1),moved:false}; render(); return; }
     if(hid==='ts'){ const b=textBox(selText); drag={mode:'resizeText',t:selText,s0:selText.size,bw:b[2]-b[0],bh:b[3]-b[1],moved:false}; render(); return; }
     if(hid){ const k=visKind(); drag=k==='fix'?{mode:'resizeFix',f:selFix,id:hid,box0:[selFix.x,selFix.y,selFix.x+fixDims(selFix)[0],selFix.y+fixDims(selFix)[1]],moved:false}:startOpenDrag('resizeOpen',hid,w); render(); return; } }
   const startLine=(mode,seg,extra)=>{ const L=lineOf(seg); const t=along(L,w); drag={mode,seg,L,p0:t,a0:alongFloor(L,t),s0:alongSnap(L,t),moved:false,...extra}; preview={kind:mode,...dragRange(drag,w)}; };
   switch(tool){
-    case 'wall': drag={mode:'wall',a:snapPt(w)}; preview={kind:'wall',ax:drag.a[0],ay:drag.a[1],bx:drag.a[0],by:drag.a[1]}; break;
+    case 'wall': drag={mode:'wall',a:snapDraw(w),sx:e.offsetX,sy:e.offsetY,moved:false}; preview={kind:'wall',ax:drag.a[0],ay:drag.a[1],bx:drag.a[0],by:drag.a[1]}; break;
     case 'erase': { const t=hitText(w), f=hitFix(w), dm=hitDim(w);
       if(t){state.texts.splice(state.texts.indexOf(t),1); if(selText===t)selText=null; drag={mode:'none',changed:true};}
       else if(f){state.fixtures.splice(state.fixtures.indexOf(f),1); if(selFix===f)selFix=null; drag={mode:'none',changed:true};}
       else if(dm){state.dims.splice(state.dims.indexOf(dm),1); drag={mode:'none',changed:true};}
       else { const seg=nearestSeg(w); if(seg) startLine('erase',seg); else drag=null; } break; }
-    case 'dim': drag={mode:'dim',a:snapPt(w)}; preview={kind:'dim',ax:drag.a[0],ay:drag.a[1],bx:drag.a[0],by:drag.a[1]}; break;
+    case 'dim': drag={mode:'dim',a:snapDraw(w),sx:e.offsetX,sy:e.offsetY,moved:false}; preview={kind:'dim',ax:drag.a[0],ay:drag.a[1],bx:drag.a[0],by:drag.a[1]}; break;
     case 'door': case 'window': { const sub=curSub(); const seg=nearestSeg(w); if(!seg){ selOpenPt=null; updateOpenPanel(); drag=null; break; }
       if(seg.o&&seg.o.t===sub){ cycleFlip(seg); selOpenPt=midOf(seg); drag={mode:'none',changed:true}; } else startLine('open',seg,{sub}); break; }
     case 'room': { const q=snapCorner(w);
@@ -1220,10 +1241,10 @@ cv.addEventListener('pointermove',e=>{
     const z=clamp(pinch.view.z*d/pinch.d,ZMIN,ZMAX); view.z=z; view.x=pinch.view.x+pinch.c[0]/pinch.view.z-c[0]/z; view.y=pinch.view.y+pinch.c[1]/pinch.view.z-c[1]/z; render(); return; }
   const w=toWorld(e.offsetX,e.offsetY);
   hover=null;
-  altDown=e.altKey;
+  altDown=e.altKey; shiftDown=e.shiftKey;
   if(!drag){ const hid=(tool==='select'||tool==='fix'||tool==='door'||tool==='window'||tool==='room')?hitHandle(w):null;
     if(hid){ cv.style.cursor=handleCur(hid); render(); return; }
-    if(tool==='wall') hover={pt:snapPt(w)}; else if(tool==='room') hover={pt:snapCorner(w)}; else if(tool==='door'||tool==='window'){const seg=nearestSeg(w); if(seg)hover={range:hoverRangeOn(seg,w)};}
+    if(tool==='wall'||tool==='dim') hover={pt:snapDraw(w)}; else if(tool==='room') hover={pt:snapCorner(w)}; else if(tool==='door'||tool==='window'){const seg=nearestSeg(w); if(seg)hover={range:hoverRangeOn(seg,w)};}
     const mb=tool==='select'&&multiBox(); cv.style.cursor=mb&&w[0]>=mb[0]&&w[0]<=mb[2]&&w[1]>=mb[1]&&w[1]<=mb[3]?'move':tool==='select'?((hitText(w)||hitFix(w))?'move':(hitDim(w)||nearestSeg(w))?'pointer':'default'):toolCursor(tool);
     render(); return; }
   switch(drag.mode){
@@ -1234,8 +1255,8 @@ cv.addEventListener('pointermove',e=>{
     case 'roomVert': { const q=snapCorner(w); drag.rm.poly[drag.i]=q; drag.moved=true; break; }
     case 'moveMulti': { const d=drag, rx=w[0]-d.w0[0], ry=w[1]-d.w0[1]; if(!d.moved&&Math.hypot(rx,ry)*view.z<4) break; d.moved=true;
       const dx=isFree()?Math.round(rx):gridDelta(d.resX,rx), dy=isFree()?Math.round(ry):gridDelta(d.resY,ry); if(dx!==d.dx||dy!==d.dy) applyMultiMove(d,dx,dy,false); break; }
-    case 'wall': { const b=constrainEnd(drag.a,snapPt(w)); preview={kind:'wall',ax:drag.a[0],ay:drag.a[1],bx:b[0],by:b[1]}; break; }
-    case 'dim': { const b=snapPt(w); preview={kind:'dim',ax:drag.a[0],ay:drag.a[1],bx:b[0],by:b[1]}; break; }
+    case 'wall': { if(Math.hypot(e.offsetX-drag.sx,e.offsetY-drag.sy)>6) drag.moved=true; if(!drag.moved) break; const q=snapDraw(w), b=constrainEnd(drag.a,q); preview={kind:'wall',ax:drag.a[0],ay:drag.a[1],bx:b[0],by:b[1],k:q.k&&b[0]===q[0]&&b[1]===q[1]}; break; }
+    case 'dim': { if(Math.hypot(e.offsetX-drag.sx,e.offsetY-drag.sy)>6) drag.moved=true; if(!drag.moved) break; const b=straightEnd(drag.a,snapDraw(w)); preview={kind:'dim',ax:drag.a[0],ay:drag.a[1],bx:b[0],by:b[1]}; break; }
     case 'erase': case 'open': { const t=along(drag.L,w); if(alongSnap(drag.L,t)!==drag.s0&&Math.abs(t-drag.p0)>4/view.z) drag.moved=true; preview={kind:drag.mode,...dragRange(drag,w)}; break; }
     case 'moveText': { const nx=snapV(w[0]-drag.ox), ny=snapV(w[1]-drag.oy); if(nx!==drag.t.x||ny!==drag.t.y){drag.t.x=nx;drag.t.y=ny;drag.moved=true;} break; }
     case 'resizeText': { const d=drag, t=d.t, dx=w[0]-t.x, dy=w[1]-t.y, k=(dx*d.bw+dy*d.bh)/(d.bw*d.bw+d.bh*d.bh);   // 対角線方向に引いた割合で拡大縮小
@@ -1258,8 +1279,8 @@ function endPointer(e){
   if(!drag) return; const d=drag; drag=null; preview=null;
   const w=toWorld(e.offsetX,e.offsetY);
   switch(d.mode){
-    case 'wall': { const e2=snapPt(w); if(e2[0]===d.a[0]&&e2[1]===d.a[1]){ const seg=nearestSeg(w); if(seg&&setWallThick(seg,state.thick)) commit(); } else if(addWallLine(d.a,e2)) commit(); break; }
-    case 'dim': { const b=snapPt(w); if(Math.hypot(b[0]-d.a[0],b[1]-d.a[1])>=0.5){ state.dims.push({x1:d.a[0],y1:d.a[1],x2:b[0],y2:b[1]}); commit(); } break; }
+    case 'wall': { const e2=snapDraw(w); if(!d.moved||(e2[0]===d.a[0]&&e2[1]===d.a[1])){ const seg=nearestSeg(w); if(seg&&setWallThick(seg,state.thick)) commit(); } else if(addWallLine(d.a,e2)) commit(); break; }
+    case 'dim': { const b=straightEnd(d.a,snapDraw(w)); if(d.moved&&Math.hypot(b[0]-d.a[0],b[1]-d.a[1])>=0.5){ state.dims.push({x1:d.a[0],y1:d.a[1],x2:b[0],y2:b[1]}); commit(); } break; }
     case 'erase': { const r=dragRange(d,w); const restore=!d.moved&&d.seg.o; if(replaceRange(r.L,r.from,r.to,restore?null:REMOVE)) commit(); break; }
     case 'open': { const r=dragRange(d,w); const f=inheritFlip(r.L,r.from,r.to,d.sub); if(replaceRange(r.L,r.from,r.to,newOpening(d.sub,f))){ const [x,y]=P(r.L,(r.from+r.to)/2); selOpenPt=[x,y]; commit(); } updateOpenPanel(); break; }
     case 'none': if(d.changed) commit(); updatePanels(); break;
@@ -1311,7 +1332,7 @@ window.addEventListener('keyup',e=>{if(e.code==='Space')space=false;});
 
 // ===== ツール・パネル =====
 const HINTS={select:'クリックで選択、何もない所からドラッグで囲むとまとめて選択。設備・文字・建具はドラッグで移動、四角／丸のつまみを引いてサイズ変更、Deleteで削除、Escで解除',erase:'ドア・窓をクリックで壁に戻す。壁はクリックで1グリッド分、なぞった範囲が消える。文字・設備・寸法線はクリックで削除',room:'クリック：壁で囲まれた場所を部屋に／ドラッグ：四角で部屋を作る（壁が無くても可）',fix:'クリックで配置（パターンは右の欄で選択）。ドラッグで移動、Rで回転、Mで反転、Ctrl+Dで複製',text:'クリックで文字を置き、パネルの欄で内容を編集。文字をクリックで選択、ドラッグで移動',dim:'ドラッグで寸法線を引きます（両端はグリッドに吸着）',pan:'ドラッグで移動、ホイールで拡大縮小（どのツールでも右ドラッグで移動できます）'};
-function hintOf(t){ if(t==='room'&&roomMode==='poly') return '部屋の角を順にクリック。最初の角をクリック（または Enter）で完成'; if(t==='wall') return 'ドラッグで壁を引きます（'+ANGLE_MODES[state.angle]+'・グリッドに吸着）。既存の壁をクリックで厚さを変更'; if(t==='door'||t==='window'){ const o=OPEN[curSub()]; return o.name+'（標準幅 '+o.w+'mm）：壁をクリックで配置、ドラッグで幅指定。配置済みをクリックで選択'; } return HINTS[t]; }
+function hintOf(t){ if(t==='room'&&roomMode==='poly') return '部屋の角を順にクリック。最初の角をクリック（または Enter）で完成'; if(t==='wall') return 'ドラッグで壁を引きます（'+ANGLE_MODES[state.angle]+'）。Shift で縦横にまっすぐ、緑の丸は既存の壁に吸着。既存の壁をクリックで厚さを変更'; if(t==='door'||t==='window'){ const o=OPEN[curSub()]; return o.name+'（標準幅 '+o.w+'mm）：壁をクリックで配置、ドラッグで幅指定。配置済みをクリックで選択'; } return HINTS[t]; }
 let statusMsg='';
 function setStatus(msg){ statusMsg=msg; $('#status').textContent='グリッド '+gridLabel()+(state.freePlace?'（設備・建具は自由配置）':'')+' ｜ '+msg; }
 function setTool(t){ if(t!=='room') roomDraft=null; tool=t; if(t!=='select'){ if(t!=='door'&&t!=='window') selOpenPt=null; if(t!=='text') selText=null; selWallPt=null; selDim=null; }
