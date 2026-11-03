@@ -199,6 +199,9 @@ kbd{font:11px ui-monospace,monospace;background:#F0F2F5;border:1px solid var(--l
       <div id="roomNone" class="hint">・<b>クリック</b>：壁で囲まれた場所が部屋になります（自動）<br>・<b>ドラッグ</b>：囲んだ四角がそのまま部屋になります（壁が無くても可）<br>・<b>角をクリックして囲む</b>：角を順にクリックし、最初の角をもう一度クリック（または Enter）で完成。L 字や斜めの部屋も作れます<br>手で作った部屋は、選ぶと角に四角いつまみが出て、引っ張って形を直せます。</div>
       <div id="roomDraftBox" class="stack" style="display:none"><button id="roomDraftDone">完成（Enter）</button><button id="roomDraftBack">1 つ戻す（Backspace）</button><button id="roomDraftCancel">やめる（Esc）</button></div>
       <hr>
+      <h3>面積の表示（全部の部屋）</h3>
+      <div class="seg" id="areaAllSeg"><button data-a="jo" class="on">帖</button><button data-a="m2">㎡</button><button data-a="both">両方</button><button data-a="none">なし</button></div>
+      <p class="hint">押すと今ある部屋すべてが切り替わり、これから作る部屋にも同じ表示を使います。1 部屋だけ変えるときは、その部屋を選んで「面積の表示」を変えます。</p>
       <label class="row">帖の換算
         <select id="joMode"><option value="module">910×1820=1帖</option><option value="m2">1.62㎡=1帖</option></select>
       </label>
@@ -660,7 +663,7 @@ const FONT = '"Hiragino Sans","Noto Sans JP","Yu Gothic UI",sans-serif';
 //   o = null は普通の壁、{t:OPEN の id, f:向き} は建具
 // fixtures: {type,v,x,y,rot,mir,w,h}（v はパターン id、w,h が無ければパターンの標準サイズ）
 // dims: 寸法線 {x1,y1,x2,y2}
-const state = {walls:[], texts:[], fixtures:[], rooms:[], dims:[], thick:'normal', joMode:'module', grid:455, angle:'ortho', dimUnit:'mm', fixStyle:'color', freePlace:false};
+const state = {walls:[], texts:[], fixtures:[], rooms:[], dims:[], thick:'normal', joMode:'module', grid:455, angle:'ortho', dimUnit:'mm', fixStyle:'color', freePlace:false, areaMode:'jo'};
 let tool='wall', doorSub='door', winSub='window', fixType='kitchen', textSize=410;
 const fixVarSel={};               // 型ごとに、次に置くパターンの id
 let selRoom=null, selFix=null, selText=null, selOpenPt=null, selWallPt=null, selDim=null;   // selOpenPt / selWallPt: 選択中の建具・壁の中点 mm（線分は normalize で作り直されるので点で持つ）
@@ -819,7 +822,7 @@ function applySnap(s){ applyDoc(JSON.parse(s)); }
 function commit(){ hist.push(lastSnap); if(hist.length>100) hist.shift(); redo.length=0; lastSnap=snap(); regions=null; save(); render(); }
 function undo(){ if(!hist.length) return; redo.push(snap()); applySnap(hist.pop()); lastSnap=snap(); save(); updatePanels(); render(); }
 function redoFn(){ if(!redo.length) return; hist.push(snap()); applySnap(redo.pop()); lastSnap=snap(); save(); updatePanels(); render(); }
-function fullDoc(){ return {v:2,grid:state.grid,angle:state.angle,thick:state.thick,joMode:state.joMode,dimUnit:state.dimUnit,fixStyle:state.fixStyle,freePlace:state.freePlace,...JSON.parse(snap())}; }
+function fullDoc(){ return {v:2,grid:state.grid,angle:state.angle,thick:state.thick,joMode:state.joMode,dimUnit:state.dimUnit,fixStyle:state.fixStyle,freePlace:state.freePlace,areaMode:state.areaMode,...JSON.parse(snap())}; }
 let mem=null;
 function save(){ const s=JSON.stringify(fullDoc()); try{localStorage.setItem(STORE_KEY,s);}catch(e){mem=s;} }
 // v1（1マス=455mm のマス座標、壁はキー "x1,y1,x2,y2"）を mm の線分形式に変換する
@@ -841,7 +844,7 @@ function applyDoc(o){
   state.fixtures=(o.fixtures||[]).map(f=>FIX_ALIAS[f.type]?{...f,type:FIX_ALIAS[f.type][0],v:FIX_ALIAS[f.type][1]}:f).filter(f=>FIX[f.type]);
   regions=null; clearSel();
 }
-function applySettings(o){ if(o.thick&&THICK[o.thick]) state.thick=o.thick; if(o.joMode) state.joMode=o.joMode; if(o.grid) state.grid=clampGrid(o.grid); if(o.angle&&ANGLE_MODES[o.angle]) state.angle=o.angle; if(o.dimUnit==='m'||o.dimUnit==='mm') state.dimUnit=o.dimUnit; if(FIXCOL[o.fixStyle]) state.fixStyle=o.fixStyle; if(typeof o.freePlace==='boolean') state.freePlace=o.freePlace; }
+function applySettings(o){ if(['jo','m2','both','none'].includes(o.areaMode)) state.areaMode=o.areaMode; if(o.thick&&THICK[o.thick]) state.thick=o.thick; if(o.joMode) state.joMode=o.joMode; if(o.grid) state.grid=clampGrid(o.grid); if(o.angle&&ANGLE_MODES[o.angle]) state.angle=o.angle; if(o.dimUnit==='m'||o.dimUnit==='mm') state.dimUnit=o.dimUnit; if(FIXCOL[o.fixStyle]) state.fixStyle=o.fixStyle; if(typeof o.freePlace==='boolean') state.freePlace=o.freePlace; }
 function load(){
   let s=null; try{ s=localStorage.getItem(STORE_KEY)||localStorage.getItem(STORE_KEY_V1); }catch(e){ s=mem; }
   if(!s) return;
@@ -923,7 +926,7 @@ function snapCorner(w){ const tol=12/view.z; let best=null,bd=tol;
   const cand=q=>{ const d=Math.hypot(q[0]-w[0],q[1]-w[1]); if(d<bd){bd=d;best=[q[0],q[1]];} };
   for(const g of state.walls){ cand([g.x1,g.y1]); cand([g.x2,g.y2]); } for(const rm of state.rooms) if(rm.poly) rm.poly.forEach(cand);
   return best||snapPt(w); }
-function addManualRoom(poly){ if(poly.length<3||polyArea(poly)<1e4) return false; const rm={poly:poly.map(q=>[q[0],q[1]]),name:'',color:null,area:'jo'}; state.rooms.push(rm); clearSel(); selRoom=rm; commit(); updatePanels(); return true; }
+function addManualRoom(poly){ if(poly.length<3||polyArea(poly)<1e4) return false; const rm={poly:poly.map(q=>[q[0],q[1]]),name:'',color:null,area:state.areaMode}; state.rooms.push(rm); clearSel(); selRoom=rm; commit(); updatePanels(); return true; }
 function finishRoomDraft(){ const d=roomDraft; roomDraft=null; if(!(d&&addManualRoom(d))) setStatus('3 つ以上の角で囲んでください'); updateRoomPanel(); render(); }
 function regionAt(pt){ if(!regions) return -1; let best=null; for(const r of regions){ if(inRegion(pt,r)&&(!best||r.area<best.area)) best=r; } return best?best.id:-1; }
 function regionPath(r,S){ const p=new Path2D(); const ring=poly=>{ poly.forEach(([x,y],i)=>{ const [sx,sy]=S(x,y); i?p.lineTo(sx,sy):p.moveTo(sx,sy); }); p.closePath(); }; ring(r.poly); r.holes.forEach(ring); return p; }
@@ -1373,7 +1376,7 @@ function selectRoomAt(w){ const ms=shapeAt(w); if(ms&&ms.manual){ selRoom=ms.pro
   if(id<0){ selRoom=null; updateRoomPanel(); gapMarks=looseEnds();
     setStatus((gapMarks.length?'ここは壁で囲まれていません。赤い丸の所で壁が途切れています。壁を延ばすか、壁の無い境目は壁ツールの「区切り線」で閉じてください'
       :'ここは壁で囲まれていません。壁の無い境目は、壁ツールの「区切り線」で閉じると部屋にできます')+'。または、ドラッグで四角に囲むか「角をクリックして囲む」で部屋を作れます'); render(); return; }
-  const r=regions[id]; if(!r.props){ r.props={pt:[w[0],w[1]],name:'',color:null,area:'jo'}; state.rooms.push(r.props); lastSnap=snap(); }
+  const r=regions[id]; if(!r.props){ r.props={pt:[w[0],w[1]],name:'',color:null,area:state.areaMode}; state.rooms.push(r.props); lastSnap=snap(); }
   selRoom=r.props; updateRoomPanel(); render(); }
 function updateRoomPanel(){ $('#roomDraftBox').style.display=roomDraft?'':'none'; const on=!!selRoom; $('#roomNone').style.display=on?'none':''; $('#roomSel').style.display=on&&(tool==='room'||tool==='select')?'':'none'; if(!on) return;
   { const r=shapeOf(selRoom); $('#roomM2').textContent=r?'面積 '+m2Tsubo(r.area)+'・'+areaText(r.area,'jo')+(r.manual?'（手で作った部屋）':''):''; }
@@ -1382,6 +1385,8 @@ function updateRoomPanel(){ $('#roomDraftBox').style.display=roomDraft?'':'none'
 $('#roomName').oninput=e=>{ if(selRoom){selRoom.name=e.target.value; render();} };
 $('#roomName').onchange=()=>{ if(selRoom) commit(); };
 $('#roomArea').onchange=e=>{ if(selRoom){selRoom.area=e.target.value; commit();} };
+// 面積の表示を全部の部屋へまとめて当てる。これから作る部屋の既定にもなる
+$$('#areaAllSeg button').forEach(b=>b.onclick=()=>{ state.areaMode=b.dataset.a; for(const r of state.rooms) r.area=state.areaMode; $$('#areaAllSeg button').forEach(x=>x.classList.toggle('on',x===b)); commit(); updatePanels(); });
 $('#roomColorPick').oninput=e=>{ if(selRoom){selRoom.color=e.target.value; updateRoomPanel(); render();} };
 $('#roomColorPick').onchange=()=>{ if(selRoom) commit(); };
 $$('#roomModeSeg button').forEach(b=>b.onclick=()=>{ roomMode=b.dataset.m; roomDraft=null; if(roomMode==='poly') selRoom=null; $$('#roomModeSeg button').forEach(x=>x.classList.toggle('on',x===b)); updateRoomPanel(); setStatus(hintOf('room')); render(); });
@@ -1563,7 +1568,7 @@ $$('#exportMenu button').forEach(b=>b.onclick=()=>{ closeExportMenu(); const k=b
   if(k==='all') saveJpeg();
   else if(k==='view') saveJpeg({x1:view.x,y1:view.y,x2:view.x+W/view.z,y2:view.y+H/view.z});
   else setExportPick(true); });
-function syncPanels(){ $$('#thickSeg button').forEach(x=>x.classList.toggle('on',x.dataset.th===state.thick)); $$('#angleSeg button').forEach(x=>x.classList.toggle('on',x.dataset.ang===state.angle)); $('#joMode').value=state.joMode; $('#dimUnit').value=state.dimUnit; updateGridPanel(); $('#freePlace').checked=state.freePlace; syncFixStyle(); updatePanels(); }
+function syncPanels(){ $$('#areaAllSeg button').forEach(x=>x.classList.toggle('on',x.dataset.a===state.areaMode)); $$('#thickSeg button').forEach(x=>x.classList.toggle('on',x.dataset.th===state.thick)); $$('#angleSeg button').forEach(x=>x.classList.toggle('on',x.dataset.ang===state.angle)); $('#joMode').value=state.joMode; $('#dimUnit').value=state.dimUnit; updateGridPanel(); $('#freePlace').checked=state.freePlace; syncFixStyle(); updatePanels(); }
 
 // ===== 起動 =====
 // オフライン対応：Web サイトとして開いたとき（http/https）だけ sw.js を登録する。ファイルを直接開いた場合や、埋め込み表示で登録できない場合は何もしない
