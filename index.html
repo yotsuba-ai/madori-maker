@@ -223,6 +223,8 @@ kbd{font:11px ui-monospace,monospace;background:#F0F2F5;border:1px solid var(--l
 
     <section data-for="text">
       <h2>文字</h2>
+      <h3>書く向き（新しく置く文字）</h3>
+      <div class="seg" id="textDirNew"><button data-vert="0">横書き</button><button data-vert="1">縦書き</button></div>
       <h3>大きさ（新しく置く文字）</h3>
       <div class="tsize"><input type="range" id="textSizeR" min="100" max="2000" step="10"><input type="number" id="textSize" min="100" max="2000" step="10"> mm</div>
       <p class="hint">クリックで文字を置き、下の欄で内容を打ち込みます。置いた文字はクリックで選択、ドラッグで移動できます。<br>大きさは文字の高さ（図面上の mm）です。選んだ文字は、右下の四角いつまみを引っ張っても大きさを変えられます。</p>
@@ -292,6 +294,7 @@ kbd{font:11px ui-monospace,monospace;background:#F0F2F5;border:1px solid var(--l
       <div id="textSel" class="selbox" style="display:none">
         <h3>選択中：文字</h3>
         <label class="row">内容 <input type="text" id="textInput" placeholder="例：バルコニー"></label>
+        <div class="seg" id="textDirSel"><button data-vert="0">横書き</button><button data-vert="1">縦書き</button></div>
         <div class="tsize">大きさ <input type="range" id="selTextSizeR" min="100" max="2000" step="10"><input type="number" id="selTextSize" min="100" max="2000" step="10"> mm</div>
         <h3>重なり順</h3>
         <div class="seg"><button data-z="back">最背面</button><button data-z="down">背面へ</button><button data-z="up">前面へ</button><button data-z="front">最前面</button></div>
@@ -674,7 +677,7 @@ const FONT = '"Hiragino Sans","Noto Sans JP","Yu Gothic UI",sans-serif';
 // fixtures: {type,v,x,y,rot,mir,w,h}（v はパターン id、w,h が無ければパターンの標準サイズ）
 // dims: 寸法線 {x1,y1,x2,y2}
 const state = {walls:[], texts:[], fixtures:[], rooms:[], dims:[], thick:'normal', joMode:'module', grid:455, angle:'ortho', dimUnit:'mm', fixStyle:'color', freePlace:false, areaMode:'jo'};
-let tool='wall', doorSub='door', winSub='window', fixType='kitchen', textSize=410;
+let tool='wall', doorSub='door', winSub='window', fixType='kitchen', textSize=410, textVert=false;
 const fixVarSel={};               // 型ごとに、次に置くパターンの id
 let selRoom=null, selFix=null, selText=null, selOpenPt=null, selWallPt=null, selDim=null;   // selOpenPt / selWallPt: 選択中の建具・壁の中点 mm（線分は normalize で作り直されるので点で持つ）
 let view={x:0,y:0,z:24/MOD};      // x,y = 画面左上のワールド座標（mm）、z = px/mm
@@ -765,7 +768,17 @@ function toggleAreaAt(w){ const sh=shapeAt(w); if(!sh) return false; const key=s
 let multi=null;   // {fix:[], text:[], dim:[], room:[部屋の設定], segPts:[[x,y],...]}
 function multiSegs(){ if(!multi) return []; const out=[]; for(const q of multi.segPts){ const g=nearestSeg(q,1); if(g&&!out.includes(g)) out.push(g); } return out; }
 function multiCount(){ return multi?multi.fix.length+multi.text.length+multi.dim.length+multiSegs().length:0; }
-function textBox(t){ ctx.font=`${t.size*view.z}px ${FONT}`; return [t.x,t.y,t.x+ctx.measureText(t.text).width/view.z,t.y+t.size*1.2]; }
+// 縦書き（t.vert）：x, y は 1 列の左上。1 文字ずつ下へ並べる
+const V_STEP=1.05, V_ROT=new Set([...'ー—―–‐-−〜～…‥（）()「」『』【】〈〉《》［］[]｛｝{}＝=→←_＿：:']), V_PUNCT=new Set([...'、。，．,.']), V_SMALL=new Set([...'ぁぃぅぇぉっゃゅょゎァィゥェォッャュョヮ']);
+function textBox(t){ if(t.vert) return [t.x,t.y,t.x+t.size,t.y+t.size*V_STEP*Math.max(1,Array.from(t.text).length)];
+  ctx.font=`${t.size*view.z}px ${FONT}`; return [t.x,t.y,t.x+ctx.measureText(t.text).width/view.z,t.y+t.size*1.2]; }
+function drawVText(c,text,x,y,px){ c.save(); c.textAlign='center'; c.textBaseline='middle'; const cx=x+px/2;
+  Array.from(text).forEach((ch,i)=>{ const cy=y+px*V_STEP*(i+0.5);
+    if(V_ROT.has(ch)){ c.save(); c.translate(cx,cy); c.rotate(Math.PI/2); c.fillText(ch,0,0); c.restore(); }   // 長音・かっこなどは 90 度回す
+    else if(V_PUNCT.has(ch)) c.fillText(ch,cx+px*0.55,cy-px*0.55);   // 句読点は右上へ
+    else if(V_SMALL.has(ch)) c.fillText(ch,cx+px*0.1,cy-px*0.1);     // 小さい仮名は少し右上へ
+    else c.fillText(ch,cx,cy); });
+  c.restore(); }
 // 範囲 r（mm）に丸ごと入っているものを選ぶ
 function selectInRect(r){ const inR=(x,y)=>x>=r.x1&&x<=r.x2&&y>=r.y1&&y<=r.y2;
   multi={fix:state.fixtures.filter(f=>{ if(!FIX[f.type]) return false; const [fw,fh]=fixDims(f); return inR(f.x,f.y)&&inR(f.x+fw,f.y+fh); }),
@@ -1079,8 +1092,8 @@ function drawScene(c,z,ox,oy,opt){
   if(opt.ui&&tool==='select'){ for(const r of areaRegions()){ const pth=regionPath(r,S); c.fillStyle='rgba(43,76,126,.13)'; c.fill(pth,'evenodd'); c.strokeStyle='#2B4C7E'; c.lineWidth=2; c.setLineDash([5,4]); c.stroke(pth); c.setLineDash([]); } }
   // 文字
   c.textAlign='left'; c.textBaseline='top';
-  for(const tx of state.texts){ const [sx,sy]=S(tx.x,tx.y); c.font=`${tx.size*z}px ${FONT}`; c.fillStyle='#1B2433'; c.fillText(tx.text,sx,sy);
-    if(tx===selText&&opt.ui){ const tw=c.measureText(tx.text).width; c.strokeStyle='#2B4C7E'; c.setLineDash([4,3]); c.lineWidth=1; c.strokeRect(sx-3,sy-2,tw+6,tx.size*z*1.2+4); c.setLineDash([]); } }
+  for(const tx of state.texts){ const [sx,sy]=S(tx.x,tx.y); c.font=`${tx.size*z}px ${FONT}`; c.fillStyle='#1B2433'; if(tx.vert) drawVText(c,tx.text,sx,sy,tx.size*z); else c.fillText(tx.text,sx,sy);
+    if(tx===selText&&opt.ui){ const b=textBox(tx); c.strokeStyle='#2B4C7E'; c.setLineDash([4,3]); c.lineWidth=1; c.strokeRect(sx-3,sy-2,(b[2]-b[0])*z+6,(b[3]-b[1])*z+4); c.setLineDash([]); } }
 }
 // 寸法線：両端に短い斜線、中央に長さ。文字が逆さまにならないよう向きを補正
 const fmtDim=mm=>state.dimUnit==='m'?fmtM(mm):Math.round(mm).toLocaleString('ja-JP');
@@ -1148,7 +1161,7 @@ function paint(){
   placeFloatBar();
 }
 const toWorld=(px,py)=>[px/view.z+view.x, py/view.z+view.y];
-function hitText(w){ for(let i=state.texts.length-1;i>=0;i--){const t=state.texts[i]; ctx.font=`${t.size*view.z}px ${FONT}`; const tw=ctx.measureText(t.text).width/view.z; if(w[0]>=t.x-t.size*0.2&&w[0]<=t.x+tw+t.size*0.2&&w[1]>=t.y-t.size*0.1&&w[1]<=t.y+t.size*1.2) return t;} return null; }
+function hitText(w){ for(let i=state.texts.length-1;i>=0;i--){const t=state.texts[i], b=textBox(t); if(w[0]>=b[0]-t.size*0.2&&w[0]<=b[2]+t.size*0.2&&w[1]>=b[1]-t.size*0.1&&w[1]<=b[3]) return t;} return null; }
 function hitFix(w){ for(let i=state.fixtures.length-1;i>=0;i--){const f=state.fixtures[i]; if(!FIX[f.type]) continue; const [fw,fh]=fixDims(f); if(w[0]>=f.x&&w[0]<f.x+fw&&w[1]>=f.y&&w[1]<f.y+fh) return f;} return null; }
 function hitDim(w){ const tol=10/view.z; for(let i=state.dims.length-1;i>=0;i--){ if(segDist(state.dims[i],w)<tol) return state.dims[i]; } return null; }
 // 線分に沿った位置。1 グリッド分のマスは線分の始点を基準に区切る
@@ -1297,7 +1310,7 @@ function endPointer(e){
     case 'room': if(d.moved){ const [x1,x2]=[Math.min(d.a[0],d.b[0]),Math.max(d.a[0],d.b[0])], [y1,y2]=[Math.min(d.a[1],d.b[1]),Math.max(d.a[1],d.b[1])];
         if(!addManualRoom([[x1,y1],[x2,y1],[x2,y2],[x1,y2]])) setStatus('四角が小さすぎます'); }
       else { selectRoomAt(d.w); if(selRoom) setPanelHidden(false); } break;
-    case 'newText': { const t={x:snapV(d.w[0]),y:snapV(d.w[1]),text:'文字',size:textSize}; state.texts.push(t); selText=t; commit(); updateTextPanel(); setPanelHidden(false); const inp=$('#textInput'); inp.focus(); inp.select(); break; }
+    case 'newText': { const t={x:snapV(d.w[0]),y:snapV(d.w[1]),text:'文字',size:textSize}; if(textVert) t.vert=true; state.texts.push(t); selText=t; commit(); updateTextPanel(); setPanelHidden(false); const inp=$('#textInput'); inp.focus(); inp.select(); break; }
     case 'moveText': if(d.moved) commit(); else if(tool==='text'){ setPanelHidden(false); $('#textInput').focus(); $('#textInput').select(); } break;
     case 'newFix': { const vs=FIX[fixType].vars, v=vs.find(x=>x.id===fixVarSel[fixType])||vs[0]; const f={type:fixType,v:v.id,x:objSnap(d.w[0]-v.w/2),y:objSnap(d.w[1]-v.h/2),rot:0,w:v.w,h:v.h}; state.fixtures.push(f); selFix=f; updateFixPanel(); commit(); break; }
     case 'moveFix': if(d.moved) commit(); break;
@@ -1370,7 +1383,13 @@ $('#joMode').onchange=e=>{state.joMode=e.target.value; save(); render();};
 $('#dimUnit').onchange=e=>{state.dimUnit=e.target.value; save(); render();};
 
 // 文字の選択パネル
-function updateTextPanel(){ const t=selText&&state.texts.includes(selText)?selText:null; if(!t) selText=null; $('#textSel').style.display=(t&&(tool==='text'||tool==='select'))?'':'none'; if(!t) return; if(document.activeElement!==$('#textInput')) $('#textInput').value=t.text; syncTextSize(); }
+function syncTextDir(){ const v=selText?!!selText.vert:textVert;
+  for(const [id,on] of [['#textDirNew',textVert],['#textDirSel',v]]) $(id).querySelectorAll('button').forEach(b=>b.classList.toggle('on',(b.dataset.vert==='1')===on)); }
+function setTextVert(v){ textVert=v; if(selText&&!!selText.vert!==v){ if(v) selText.vert=true; else delete selText.vert; commit(); } syncTextDir(); render(); }
+$('#textDirNew').querySelectorAll('button').forEach(b=>{ b.onclick=()=>{ textVert=b.dataset.vert==='1'; syncTextDir(); b.blur(); }; });
+$('#textDirSel').querySelectorAll('button').forEach(b=>{ b.onclick=()=>{ setTextVert(b.dataset.vert==='1'); b.blur(); }; });
+syncTextDir();
+function updateTextPanel(){ const t=selText&&state.texts.includes(selText)?selText:null; if(!t) selText=null; $('#textSel').style.display=(t&&(tool==='text'||tool==='select'))?'':'none'; syncTextDir(); if(!t) return; if(document.activeElement!==$('#textInput')) $('#textInput').value=t.text; syncTextSize(); }
 $('#textInput').oninput=e=>{ if(selText){ selText.text=e.target.value; render(); } };
 $('#textInput').onchange=e=>{ if(!selText) return; if(!e.target.value.trim()){ e.target.value=selText.text||'文字'; selText.text=e.target.value; } commit(); };
 $('#textInput').onkeydown=e=>{ if(e.key==='Enter'||e.key==='Escape'){ e.target.blur(); } };
@@ -1519,7 +1538,7 @@ function visKind(){
   if(tool==='select'&&selRoom) return 'room';
   return null; }
 function dupFix(){ if(visKind()!=='fix') return; const off=Math.max(state.grid,snapV(300)||state.grid); const n={...selFix,x:selFix.x+off,y:selFix.y+off}; state.fixtures.push(n); selFix=n; commit(); updateFixPanel(); }
-function zBox(k,o){ if(k==='fix'){ const [fw,fh]=fixDims(o); return [o.x,o.y,o.x+fw,o.y+fh]; } ctx.font=`${o.size*view.z}px ${FONT}`; return [o.x,o.y,o.x+ctx.measureText(o.text).width/view.z,o.y+o.size*1.2]; }
+function zBox(k,o){ if(k==='fix'){ const [fw,fh]=fixDims(o); return [o.x,o.y,o.x+fw,o.y+fh]; } return textBox(o); }
 function zOrder(a){ const k=visKind(); if(k!=='fix'&&k!=='text') return; const arr=k==='fix'?state.fixtures:state.texts, it=k==='fix'?selFix:selText, i=arr.indexOf(it); if(i<0) return; let to=i;
   if(a==='front') to=arr.length-1; else if(a==='back') to=0;
   else { const b=zBox(k,it), hits=o=>{ if(k==='fix'&&!FIX[o.type]) return false; const q=zBox(k,o); return b[0]<q[2]&&q[0]<b[2]&&b[1]<q[3]&&q[1]<b[3]; }, d=a==='up'?1:-1;
@@ -1544,6 +1563,7 @@ function doAction(a){ const k=visKind();
   else if(a==='dup'){ if(k==='multi') dupMulti(); else dupFix(); }
   else if(a==='del') deleteSel();
   else if(a==='up'||a==='down'||a==='front'||a==='back') zOrder(a);
+  else if(a==='vert'&&k==='text') setTextVert(!selText.vert);
   else if(a==='edit'&&k==='text'){ const i=$('#textInput'); i.focus(); i.select(); }
   else if(a==='flip'&&k==='open') $('#openFlip').click();
   else if(a==='add'&&k==='area') areaAdd=!areaAdd;
@@ -1553,15 +1573,15 @@ function doAction(a){ const k=visKind();
 const FB_ICON={rot:'<path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/>',mir:'<path d="M12 3v18"/><path d="M9 7l-5 5 5 5z"/><path d="M15 7l5 5-5 5z"/>',
   dup:'<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M4 16V6a2 2 0 0 1 2-2h10"/>',del:'<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
   edit:'<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M14 6l4 4"/>',add:'<path d="M12 5v14M5 12h14"/>',clear:'<path d="M6 6l12 12M18 6L6 18"/>',flip:'<path d="M4 12h16M8 8l-4 4 4 4M16 8l4 4-4 4"/>',
-  up:'<rect x="3" y="10" width="12" height="11" rx="1.5"/><path d="M19 14V4M15.5 7.5L19 4l3.5 3.5"/>',down:'<rect x="3" y="3" width="12" height="11" rx="1.5"/><path d="M19 10v10M15.5 16.5L19 20l3.5-3.5"/>'};
-const FB_TITLE={rot:'回転（R）',mir:'左右反転（M）',dup:'複製（Ctrl+D）',del:'削除（Delete）',edit:'文字を編集',flip:'向きを変える',add:'タップで部屋を足す／外す',clear:'選択を解除（Esc）',up:'前面へ（]）',down:'背面へ（[）'};
-const FB_ACTS={multi:['dup','del'],fix:['rot','mir','up','down','dup','del'],text:['edit','up','down','del'],open:['flip','del'],wall:['del'],dim:['del'],room:['del'],area:['add','clear']};
+  vert:'<path d="M7 4h10M12 4v8"/><path d="M12 12v8M8.5 16.5L12 20l3.5-3.5"/>',up:'<rect x="3" y="10" width="12" height="11" rx="1.5"/><path d="M19 14V4M15.5 7.5L19 4l3.5 3.5"/>',down:'<rect x="3" y="3" width="12" height="11" rx="1.5"/><path d="M19 10v10M15.5 16.5L19 20l3.5-3.5"/>'};
+const FB_TITLE={rot:'回転（R）',mir:'左右反転（M）',dup:'複製（Ctrl+D）',del:'削除（Delete）',edit:'文字を編集',vert:'縦書き／横書き',flip:'向きを変える',add:'タップで部屋を足す／外す',clear:'選択を解除（Esc）',up:'前面へ（]）',down:'背面へ（[）'};
+const FB_ACTS={multi:['dup','del'],fix:['rot','mir','up','down','dup','del'],text:['edit','vert','up','down','del'],open:['flip','del'],wall:['del'],dim:['del'],room:['del'],area:['add','clear']};
 let fbKind=null;
 function selScreenBox(k){ const z=view.z, S=(x,y)=>[(x-view.x)*z,(y-view.y)*z];
   const segBox=g=>{ const [ax,ay]=S(g.x1,g.y1),[bx,by]=S(g.x2,g.y2); return [Math.min(ax,bx),Math.min(ay,by)-8,Math.max(ax,bx),Math.max(ay,by)+8]; };
   if(k==='multi'){ const b=multiBox(); if(!b) return null; const [ax,ay]=S(b[0],b[1]),[bx,by]=S(b[2],b[3]); return [ax-8,ay-8,bx+8,by+8]; }
   if(k==='fix'){ const [fw,fh]=fixDims(selFix), [x,y]=S(selFix.x,selFix.y); return [x,y,x+fw*z,y+fh*z]; }
-  if(k==='text'){ ctx.font=`${selText.size*z}px ${FONT}`; const [x,y]=S(selText.x,selText.y); return [x,y,x+ctx.measureText(selText.text).width,y+selText.size*z*1.2]; }
+  if(k==='text'){ const b=textBox(selText), [x,y]=S(b[0],b[1]), [x2,y2]=S(b[2],b[3]); return [x,y,x2,y2]; }
   if(k==='dim') return segBox(selDim); if(k==='open') return segBox(selOpen()); if(k==='wall') return segBox(selWall());
   if(k==='area'){ const rs=areaRegions(); if(!rs.length) return null; let x1=Infinity,y1=Infinity,x2=-Infinity,y2=-Infinity; for(const r of rs) for(const [px,py] of r.poly){ const [sx,sy]=S(px,py); x1=Math.min(x1,sx); y1=Math.min(y1,sy); x2=Math.max(x2,sx); y2=Math.max(y2,sy); } return [x1,y1,x2,y2]; }
   if(k==='room'){ const r=shapeOf(selRoom); if(!r) return null; let x1=Infinity,y1=Infinity,x2=-Infinity,y2=-Infinity; for(const [px,py] of r.poly){ const [sx,sy]=S(px,py); x1=Math.min(x1,sx); y1=Math.min(y1,sy); x2=Math.max(x2,sx); y2=Math.max(y2,sy); } return [x1,y1,x2,y2]; }
@@ -1582,7 +1602,7 @@ $('#zoomIn').onclick=()=>zoomBy(1.25); $('#zoomOut').onclick=()=>zoomBy(0.8);
 function bbox(){ let x1=Infinity,y1=Infinity,x2=-Infinity,y2=-Infinity, any=false; const ext=(a,b,c,d)=>{x1=Math.min(x1,a);y1=Math.min(y1,b);x2=Math.max(x2,c);y2=Math.max(y2,d);any=true;};
   for(const s of state.walls) ext(Math.min(s.x1,s.x2),Math.min(s.y1,s.y2),Math.max(s.x1,s.x2),Math.max(s.y1,s.y2));
   for(const f of state.fixtures){ if(!FIX[f.type]) continue; const [fw,fh]=fixDims(f); ext(f.x,f.y,f.x+fw,f.y+fh);}
-  for(const t of state.texts){ ext(t.x,t.y,t.x+t.text.length*t.size*1.05,t.y+t.size*1.3); }
+  for(const t of state.texts){ if(t.vert){ const b=textBox(t); ext(b[0],b[1],b[2],b[3]); } else ext(t.x,t.y,t.x+t.text.length*t.size*1.05,t.y+t.size*1.3); }
   for(const rm of state.rooms) if(rm.poly) for(const [x,y] of rm.poly) ext(x,y,x,y);
   for(const d of state.dims){ ext(Math.min(d.x1,d.x2)-200,Math.min(d.y1,d.y2)-300,Math.max(d.x1,d.x2)+200,Math.max(d.y1,d.y2)+100); }
   return any?{x1,y1,x2,y2}:null; }
