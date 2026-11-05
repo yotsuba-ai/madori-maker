@@ -352,30 +352,30 @@ const ROOM_PRESETS = [
   ['LDK','#FBEFC9'],['洋室','#DCE9F7'],['和室','#DDEED3'],['キッチン','#F4E8C6'],['浴室','#D7EEF3'],['洗面','#D7EEF3'],
   ['トイレ','#D7EEF3'],['玄関','#EDE7DF'],['廊下','#EDE7DF'],['収納','#E8E4EC'],['WIC','#E8E4EC'],['バルコニー','#E6E9EE'],
 ];
-// 建具の型：flips = 再クリックで巡回する向きの数、w = クリック配置時の標準幅 mm
+// 建具の型：flips = 再クリックで巡回する向きの数、side = 左右対称で、向きの切り替えは壁のどちら側か（f の bit1）だけ、w = クリック配置時の標準幅 mm
 // id は保存データに入るので変えない（door / slide / open / window は旧版から引き継ぎ）
 // panels = 選べる枚数（先頭が標準）、opts = 窓に付けられるオプション（sh シャッター・雨戸 / gr 面格子）
 const OPEN = {
   door:    {name:'片開き',     kind:'door', flips:4, w:780},
-  double:  {name:'両開き',     kind:'door', flips:2, w:1600},
+  double:  {name:'両開き',     kind:'door', flips:2, side:true, w:1600},
   parent:  {name:'親子',       kind:'door', flips:4, w:1200},
   slide1:  {name:'片引き戸',   kind:'door', flips:4, w:800,  panels:[1,2,3,4]},
   slide:   {name:'引違い戸',   kind:'door', flips:2, w:1640, panels:[2,3,4,6]},
-  slide2:  {name:'両引き戸',   kind:'door', flips:2, w:1640, panels:[2,4,6]},
+  slide2:  {name:'両引き戸',   kind:'door', flips:2, side:true, w:1640, panels:[2,4,6]},
   pocket:  {name:'引込み戸',   kind:'door', flips:2, w:800,  panels:[1,2,3,4]},
   outset:  {name:'アウトセット',kind:'door', flips:4, w:800,  panels:[1,2,3,4]},
   fold:    {name:'折れ戸',     kind:'door', flips:2, w:800,  panels:[2,4,6,8]},
   open:    {name:'開口',       kind:'door', flips:1, w:1640},
-  window:  {name:'引違い窓',   kind:'win',  flips:2, w:1690, panels:[2,3,4,6], opts:['sh','gr']},
-  winfloor:{name:'掃き出し窓', kind:'win',  flips:2, w:1690, panels:[2,3,4,6], opts:['sh','gr']},
+  window:  {name:'引違い窓',   kind:'win',  flips:2, side:true, w:1690, panels:[2,3,4,6], opts:['sh','gr']},
+  winfloor:{name:'掃き出し窓', kind:'win',  flips:2, side:true, w:1690, panels:[2,3,4,6], opts:['sh','gr']},
   slidewin:{name:'片引き窓',   kind:'win',  flips:4, w:1690, panels:[2,3,4], opts:['sh','gr']},
-  fix:     {name:'FIX窓',      kind:'win',  flips:2, w:600,  opts:['gr']},
-  hung:    {name:'上げ下げ窓', kind:'win',  flips:2, w:740,  opts:['gr']},
+  fix:     {name:'FIX窓',      kind:'win',  flips:2, side:true, w:600,  opts:['gr']},
+  hung:    {name:'上げ下げ窓', kind:'win',  flips:2, side:true, w:740,  opts:['gr']},
   casement:{name:'片開き窓',   kind:'win',  flips:4, w:600,  opts:['gr']},
   awning:  {name:'すべり出し窓',kind:'win', flips:4, w:600,  opts:['gr']},
-  louver:  {name:'ルーバー窓', kind:'win',  flips:2, w:400,  opts:['gr']},
-  bay:     {name:'出窓',       kind:'win',  flips:2, w:1690},
-  small:   {name:'小窓',       kind:'win',  flips:2, w:400,  opts:['gr']},
+  louver:  {name:'ルーバー窓', kind:'win',  flips:2, side:true, w:400,  opts:['gr']},
+  bay:     {name:'出窓',       kind:'win',  flips:2, side:true, w:1690},
+  small:   {name:'小窓',       kind:'win',  flips:2, side:true, w:400,  opts:['gr']},
 };
 // 建具の枚数（指定が無ければ型の標準。折れ戸だけは幅から自動）
 const openPanels=o=>{ const d=OPEN[o.t]; return (o.n&&d&&d.panels&&d.panels.includes(o.n))?o.n:(d&&d.panels?d.panels[0]:1); };
@@ -735,7 +735,7 @@ function setWallThick(seg,th){ if(seg.th===th) return false; seg.th=th; normaliz
 function segDist(s,w){ const dx=s.x2-s.x1, dy=s.y2-s.y1, l2=dx*dx+dy*dy; const t=l2?clamp(((w[0]-s.x1)*dx+(w[1]-s.y1)*dy)/l2,0,1):0; return Math.hypot(w[0]-(s.x1+t*dx),w[1]-(s.y1+t*dy)); }
 // 同じ距離なら建具（ドア・窓）を優先する。建具の端をクリックしたときに隣の壁が選ばれないようにするため
 function nearestSeg(w,tol){ tol=tol??10/view.z; let best=null,bd=tol; for(const s of state.walls){const d=segDist(s,w); if(d<bd||(d===bd&&s.o&&!(best&&best.o))){bd=d;best=s;}} return best; }
-function cycleFlip(s){ const max=(OPEN[s.o.t]||{flips:1}).flips; s.o={...s.o,f:((s.o.f||0)+1)%max}; normalize(); regions=null; }
+function cycleFlip(s){ const d=OPEN[s.o.t]||{flips:1}, f=s.o.f||0; s.o={...s.o,f:d.side?f^2:(f+1)%d.flips}; normalize(); regions=null; }
 // 建具の向きを、区間の両端に接する同種の建具から引き継ぐ
 function inheritFlip(L,from,to,t){ for(const s of state.walls){ if(!s.o||s.o.t!==t||!onLine(s,L)) continue; const a=along(L,[s.x1,s.y1]), b=along(L,[s.x2,s.y2]); if(Math.abs(b-from)<0.05||Math.abs(a-to)<0.05) return s.o.f||0; } return 0; }
 const midOf=s=>[(s.x1+s.x2)/2,(s.y1+s.y2)/2];
