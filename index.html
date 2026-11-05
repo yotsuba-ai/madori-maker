@@ -73,6 +73,7 @@ canvas{display:block;touch-action:none;cursor:crosshair}
 .tsize{display:flex;align-items:center;gap:6px;margin:8px 0;font-size:13px}
 .tsize input[type=range]{flex:1;min-width:0}
 .tsize input[type=number]{width:64px}
+.panelBar{display:none}
 .hint{font-size:12px;color:var(--muted);line-height:1.6;margin:6px 0}
 .seg{display:flex;gap:0;margin:6px 0}
 .seg button{flex:1;border-radius:0;font-size:12px;padding:6px 4px}
@@ -93,12 +94,14 @@ kbd{font:11px ui-monospace,monospace;background:#F0F2F5;border:1px solid var(--l
 .menu button small{display:block;color:var(--muted);font-size:11px;margin-top:2px}
 @media (max-width:900px){
   body{grid-template-rows:44px 1fr}
-  main{grid-template-columns:1fr;grid-template-rows:1fr auto 66px}
-  .rail{flex-direction:row;border-right:0;border-top:1px solid var(--line);padding:4px;justify-content:space-around;grid-row:3}
+  main{grid-template-columns:1fr;grid-template-rows:1fr auto auto 66px}
+  .panelBar{display:block;grid-row:2;width:100%;height:36px;padding:0;border:0;border-top:1px solid var(--line);border-radius:0;background:var(--panel);font-size:13px;color:var(--muted)}
+  body.panelHidden .panel{display:none}
+  .rail{flex-direction:row;border-right:0;border-top:1px solid var(--line);padding:4px;justify-content:space-around;grid-row:4}
   .rail button{padding:4px 0;font-size:10px;min-width:34px;flex:1}
   .rail .gap{display:none}
   .stage{grid-row:1}
-  .panel{grid-row:2;border-left:0;border-top:1px solid var(--line);max-height:38vh;padding:10px 14px}
+  .panel{grid-row:3;border-left:0;border-top:1px solid var(--line);max-height:38vh;padding:10px 14px}
   header h1{font-size:14px}
 }
 </style>
@@ -144,6 +147,7 @@ kbd{font:11px ui-monospace,monospace;background:#F0F2F5;border:1px solid var(--l
     <div class="status" id="status"></div>
   </div>
 
+  <button class="panelBar" id="panelBar" aria-controls="panel"></button>
   <aside class="panel" id="panel">
     <div id="gridBox">
       <h2>グリッド</h2>
@@ -355,16 +359,16 @@ const OPEN = {
   door:    {name:'片開き',     kind:'door', flips:4, w:780},
   double:  {name:'両開き',     kind:'door', flips:2, w:1600},
   parent:  {name:'親子',       kind:'door', flips:4, w:1200},
-  slide1:  {name:'片引き戸',   kind:'door', flips:4, w:800,  panels:[1,2,3]},
-  slide:   {name:'引違い戸',   kind:'door', flips:2, w:1640, panels:[2,3,4]},
-  slide2:  {name:'両引き戸',   kind:'door', flips:2, w:1640, panels:[2,4]},
-  pocket:  {name:'引込み戸',   kind:'door', flips:2, w:800,  panels:[1,2]},
-  outset:  {name:'アウトセット',kind:'door', flips:4, w:800},
-  fold:    {name:'折れ戸',     kind:'door', flips:2, w:800,  panels:[2,4,6]},
+  slide1:  {name:'片引き戸',   kind:'door', flips:4, w:800,  panels:[1,2,3,4]},
+  slide:   {name:'引違い戸',   kind:'door', flips:2, w:1640, panels:[2,3,4,6]},
+  slide2:  {name:'両引き戸',   kind:'door', flips:2, w:1640, panels:[2,4,6]},
+  pocket:  {name:'引込み戸',   kind:'door', flips:2, w:800,  panels:[1,2,3,4]},
+  outset:  {name:'アウトセット',kind:'door', flips:4, w:800,  panels:[1,2,3,4]},
+  fold:    {name:'折れ戸',     kind:'door', flips:2, w:800,  panels:[2,4,6,8]},
   open:    {name:'開口',       kind:'door', flips:1, w:1640},
-  window:  {name:'引違い窓',   kind:'win',  flips:2, w:1690, panels:[2,3,4], opts:['sh','gr']},
-  winfloor:{name:'掃き出し窓', kind:'win',  flips:2, w:1690, panels:[2,3,4], opts:['sh','gr']},
-  slidewin:{name:'片引き窓',   kind:'win',  flips:4, w:1690, opts:['sh','gr']},
+  window:  {name:'引違い窓',   kind:'win',  flips:2, w:1690, panels:[2,3,4,6], opts:['sh','gr']},
+  winfloor:{name:'掃き出し窓', kind:'win',  flips:2, w:1690, panels:[2,3,4,6], opts:['sh','gr']},
+  slidewin:{name:'片引き窓',   kind:'win',  flips:4, w:1690, panels:[2,3,4], opts:['sh','gr']},
   fix:     {name:'FIX窓',      kind:'win',  flips:2, w:600,  opts:['gr']},
   hung:    {name:'上げ下げ窓', kind:'win',  flips:2, w:740,  opts:['gr']},
   casement:{name:'片開き窓',   kind:'win',  flips:4, w:600,  opts:['gr']},
@@ -933,7 +937,7 @@ function snapCorner(w){ const tol=12/view.z; let best=null,bd=tol;
   const cand=q=>{ const d=Math.hypot(q[0]-w[0],q[1]-w[1]); if(d<bd){bd=d;best=[q[0],q[1]];} };
   for(const g of state.walls){ cand([g.x1,g.y1]); cand([g.x2,g.y2]); } for(const rm of state.rooms) if(rm.poly) rm.poly.forEach(cand);
   return best||snapPt(w); }
-function addManualRoom(poly){ if(poly.length<3||polyArea(poly)<1e4) return false; const rm={poly:poly.map(q=>[q[0],q[1]]),name:'',color:null,area:state.areaMode}; state.rooms.push(rm); clearSel(); selRoom=rm; commit(); updatePanels(); return true; }
+function addManualRoom(poly){ if(poly.length<3||polyArea(poly)<1e4) return false; const rm={poly:poly.map(q=>[q[0],q[1]]),name:'',color:null,area:state.areaMode}; state.rooms.push(rm); clearSel(); selRoom=rm; commit(); updatePanels(); setPanelHidden(false); return true; }
 function finishRoomDraft(){ const d=roomDraft; roomDraft=null; if(!(d&&addManualRoom(d))) setStatus('3 つ以上の角で囲んでください'); updateRoomPanel(); render(); }
 function regionAt(pt){ if(!regions) return -1; let best=null; for(const r of regions){ if(inRegion(pt,r)&&(!best||r.area<best.area)) best=r; } return best?best.id:-1; }
 function regionPath(r,S){ const p=new Path2D(); const ring=poly=>{ poly.forEach(([x,y],i)=>{ const [sx,sy]=S(x,y); i?p.lineTo(sx,sy):p.moveTo(sx,sy); }); p.closePath(); }; ring(r.poly); r.holes.forEach(ring); return p; }
@@ -967,8 +971,8 @@ function drawOpening(c,z,t,L,o,bg){
   // 窓の枠とガラス面
   const g=t*0.42, frame=()=>{ c.fillStyle=GLASS; c.fillRect(0,-g,L,2*g); c.lineWidth=lwT; c.strokeStyle=INK; c.strokeRect(0,-g,L,2*g); };
   const np=openPanels(o);
-  // 引き戸・引違い窓の枚数ごとのレール割り当て：2 枚＝2 本、3 枚＝3 本（三本引き）、4 枚＝外 2 枚が奥・中 2 枚が手前
-  const RAIL={1:[0],2:[0,1],3:[0,1,2],4:[0,1,1,0]}, rails=n=>RAIL[n]||RAIL[2], railY=(r,k,span)=>k<2?0:(-span/2+span*r/(k-1));
+  // 引き戸・引違い窓の枚数ごとのレール割り当て：2 枚＝2 本、3 枚＝3 本（三本引き）、4 枚＝外 2 枚が奥・中 2 枚が手前、6 枚＝2 枚ずつの組
+  const RAIL={1:[0],2:[0,1],3:[0,1,2],4:[0,1,1,0],6:[0,1,1,0,0,1]}, rails=n=>RAIL[n]||RAIL[2], railY=(r,k,span)=>k<2?0:(-span/2+span*r/(k-1));
   const parts=(n,x0,x1,ov)=>{ const w=(x1-x0)/n; return [...Array(n)].map((_,i)=>[x0+i*w-(i>0?ov:0), x0+(i+1)*w+(i<n-1?ov:0)]); };
   // 引違い：n 枚をレールに並べる（flip=true で手前・奥を入れ替え）
   const slideSet=(n,y0,span,flip,drawFn,ov)=>{ const rr=rails(n), k=Math.max(...rr)+1; parts(n,0,L,ov).forEach(([x0,x1],i)=>drawFn(x0,x1,y0+(flip?-1:1)*railY(rr[i],k,span),k)); };
@@ -991,11 +995,11 @@ function drawOpening(c,z,t,L,o,bg){
     case 'slide2': { const ov=Math.min(pt*2,L*0.06), h=np/2; // 両引き：中央から左右へ分かれる
       if(h===1){ panel(-ov,L/2,s*t*0.2); panel(L/2,L+ov,s*t*0.2); } else { stackSet(h,0,L/2,-1,s*t*0.28,s*t*0.56/(h-1),ov); stackSet(h,L/2,L,1,s*t*0.28,s*t*0.56/(h-1),ov); }
       arrow(L*0.42,L*0.08,s*(t/2+off)); arrow(L*0.58,L*0.92,s*(t/2+off)); break; }
-    case 'outset': { const ov=Math.min(pt*3,L*0.1), y=s*(t/2+pt*0.7); // 壁の外に付く引き戸：レールを壁の面に描き、戸は壁の外側
-      c.lineWidth=lwT; c.strokeStyle=INK; LN(c,dir>0?-ov:-L*0.9,s*t/2,dir>0?L*1.9:L+ov,s*t/2); panel(-ov,L+ov,y); arrow(dir>0?L*0.2:L*0.8, dir>0?L*0.8:L*0.2, s*(t/2+pt*1.4+off)); break; }
-    case 'pocket': { const pl=L*0.9, sx=dir>0?L:-pl; c.fillStyle=bg; c.fillRect(sx,-pt*0.8,pl,pt*1.6);
-      c.setLineDash(dash); c.lineWidth=lwT; c.strokeStyle=INK; c.strokeRect(sx,-pt/2,pl,pt); c.setLineDash([]);
-      if(np===1) panel(dir>0?0:-pt, dir>0?L+pt:L, 0); else stackSet(np,0,L,dir,t*0.15,t*0.3,pt);
+    case 'outset': { const ov=Math.min(pt*3,L*0.1), sw=L/np, st=pt*0.85, y=s*(t/2+pt*0.7); // 壁の外に付く引き戸：レールを壁の面に描き、戸は壁の外側（複数枚は外へ順に重ねる）
+      c.lineWidth=lwT; c.strokeStyle=INK; LN(c,dir>0?-ov:-sw*0.9,s*t/2,dir>0?L+sw*0.9:L+ov,s*t/2); if(np===1) panel(-ov,L+ov,y); else stackSet(np,0,L,dir,y,-s*st,ov); arrow(dir>0?L*0.2:L*0.8, dir>0?L*0.8:L*0.2, s*(t/2+pt*1.4+off+(np-1)*st)); break; }
+    case 'pocket': { const pl=L/np*0.9, sx=dir>0?L:-pl, bh=np>1?pt+t*0.3:pt, fh=Math.min(bh*0.8,t*0.45); c.fillStyle=bg; c.fillRect(sx,-fh,pl,fh*2);
+      c.setLineDash(dash); c.lineWidth=lwT; c.strokeStyle=INK; c.strokeRect(sx,-bh/2,pl,bh); c.setLineDash([]);
+      if(np===1) panel(dir>0?0:-pt, dir>0?L+pt:L, 0); else stackSet(np,0,L,dir,t*0.15,t*0.3/(np-1),pt);
       arrow(dir>0?L*0.2:L*0.8, dir>0?L*0.8:L*0.2, t/2+off); break; }
     case 'fold': { // 蛇腹：扉 1 枚 ≒ 400mm、2 枚で 1 つの山
       const sf=f&1?-1:1, n=o.n&&OPEN.fold.panels.includes(o.n)?o.n:Math.max(2,2*Math.round(Lmm/800)), p=L/n, y0=sf*t*0.3, amp=sf*(t*0.2+Math.min(p*0.55,k*0.5));
@@ -1003,8 +1007,8 @@ function drawOpening(c,z,t,L,o,bg){
       for(let i=1;i<=n;i++) c.lineTo(i*p, i%2?y0+amp:y0); c.stroke(); c.lineJoin='miter'; break; }
     case 'open': c.strokeStyle='#777'; c.lineWidth=lwT; c.setLineDash([Math.max(3,k*0.2),Math.max(2,k*0.15)]); LN(c,0,0,L,0); c.setLineDash([]); break;
     case 'window': frame(); sashes(lw*1.3,np); outside(); break;
-    case 'slidewin': { frame(); const ov=Math.max(lw*2,L*0.03); c.lineWidth=lw*1.3; LN(c,L/2-ov,t*0.15,L,t*0.15); LN(c,0,-t*0.15,L/2+ov,-t*0.15); // 片引き窓：片側は FIX、もう片側が引く
-      arrow(dir>0?L*0.12:L*0.38,dir>0?L*0.38:L*0.12,0); outside(); break; }
+    case 'slidewin': { frame(); const ov=Math.max(lw*2,L*0.03), sw=L/np; c.lineWidth=lw*1.3; parts(np,0,L,ov).forEach(([a,b],i)=>{ const y=t*0.15*(2*i/(np-1)-1); LN(c,a,y,b,y); }); // 片引き窓：片側は FIX、もう片側が引く
+      arrow(dir>0?sw*0.24:sw*0.76,dir>0?sw*0.76:sw*0.24,0); outside(); break; }
     case 'hung': frame(); c.lineWidth=lw*1.2; LN(c,0,-t*0.12,L,-t*0.12); LN(c,0,t*0.12,L,t*0.12); outside(); break;
     case 'awning': { frame(); c.lineWidth=lw; LN(c,0,0,L,0); const len=L*0.85, ang=Math.PI/6; c.lineWidth=Math.max(1.5,pt*0.6); LN(c,hx,ny*g,hx+ux*len*Math.cos(ang),ny*(g+len*Math.sin(ang)));
       c.setLineDash(dash); c.lineWidth=lwT; LN(c,hx+ux*len*Math.cos(ang),ny*(g+len*Math.sin(ang)),hx+ux*len,ny*g); c.setLineDash([]); outside(); break; }
@@ -1286,9 +1290,9 @@ function endPointer(e){
     case 'none': if(d.changed) commit(); updatePanels(); break;
     case 'room': if(d.moved){ const [x1,x2]=[Math.min(d.a[0],d.b[0]),Math.max(d.a[0],d.b[0])], [y1,y2]=[Math.min(d.a[1],d.b[1]),Math.max(d.a[1],d.b[1])];
         if(!addManualRoom([[x1,y1],[x2,y1],[x2,y2],[x1,y2]])) setStatus('四角が小さすぎます'); }
-      else selectRoomAt(d.w); break;
-    case 'newText': { const t={x:snapV(d.w[0]),y:snapV(d.w[1]),text:'文字',size:textSize}; state.texts.push(t); selText=t; commit(); updateTextPanel(); const inp=$('#textInput'); inp.focus(); inp.select(); break; }
-    case 'moveText': if(d.moved) commit(); else if(tool==='text'){ $('#textInput').focus(); $('#textInput').select(); } break;
+      else { selectRoomAt(d.w); if(selRoom) setPanelHidden(false); } break;
+    case 'newText': { const t={x:snapV(d.w[0]),y:snapV(d.w[1]),text:'文字',size:textSize}; state.texts.push(t); selText=t; commit(); updateTextPanel(); setPanelHidden(false); const inp=$('#textInput'); inp.focus(); inp.select(); break; }
+    case 'moveText': if(d.moved) commit(); else if(tool==='text'){ setPanelHidden(false); $('#textInput').focus(); $('#textInput').select(); } break;
     case 'newFix': { const vs=FIX[fixType].vars, v=vs.find(x=>x.id===fixVarSel[fixType])||vs[0]; const f={type:fixType,v:v.id,x:objSnap(d.w[0]-v.w/2),y:objSnap(d.w[1]-v.h/2),rot:0,w:v.w,h:v.h}; state.fixtures.push(f); selFix=f; updateFixPanel(); commit(); break; }
     case 'moveFix': if(d.moved) commit(); break;
     case 'pan': cv.style.cursor=exportPick?'crosshair':toolCursor(tool); break;
@@ -1334,6 +1338,11 @@ window.addEventListener('keyup',e=>{if(e.code==='Space')space=false;});
 const HINTS={select:'クリックで選択、何もない所からドラッグで囲むとまとめて選択。設備・文字・建具はドラッグで移動、四角／丸のつまみを引いてサイズ変更、Deleteで削除、Escで解除',erase:'ドア・窓をクリックで壁に戻す。壁はクリックで1グリッド分、なぞった範囲が消える。文字・設備・寸法線はクリックで削除',room:'クリック：壁で囲まれた場所を部屋に／ドラッグ：四角で部屋を作る（壁が無くても可）',fix:'クリックで配置（パターンは右の欄で選択）。ドラッグで移動、Rで回転、Mで反転、Ctrl+Dで複製',text:'クリックで文字を置き、パネルの欄で内容を編集。文字をクリックで選択、ドラッグで移動',dim:'ドラッグで寸法線を引きます（両端はグリッドに吸着）',pan:'ドラッグで移動、ホイールで拡大縮小（どのツールでも右ドラッグで移動できます）'};
 function hintOf(t){ if(t==='room'&&roomMode==='poly') return '部屋の角を順にクリック。最初の角をクリック（または Enter）で完成'; if(t==='wall') return 'ドラッグで壁を引きます（'+ANGLE_MODES[state.angle]+'）。Shift で縦横にまっすぐ、緑の丸は既存の壁に吸着。既存の壁をクリックで厚さを変更'; if(t==='door'||t==='window'){ const o=OPEN[curSub()]; return o.name+'（標準幅 '+o.w+'mm）：壁をクリックで配置、ドラッグで幅指定。配置済みをクリックで選択'; } return HINTS[t]; }
 let statusMsg='';
+// スマホ幅で設定欄をたたむ（どの端末でも開閉の状態を覚える。PC 幅では常に表示）
+const PANEL_KEY='madori-panel-hidden';
+function setPanelHidden(h,init){ document.body.classList.toggle('panelHidden',h); const b=$('#panelBar'); b.textContent=h?'▲ メニューを開く':'▼ メニューをたたむ'; b.setAttribute('aria-expanded',String(!h)); try{ localStorage.setItem(PANEL_KEY,h?'1':'0'); }catch(e){} if(!init) resize(); }
+$('#panelBar').onclick=()=>setPanelHidden(!document.body.classList.contains('panelHidden'));
+{ let h=false; try{ h=localStorage.getItem(PANEL_KEY)==='1'; }catch(e){} setPanelHidden(h,true); }
 function setStatus(msg){ statusMsg=msg; $('#status').textContent='グリッド '+gridLabel()+(state.freePlace?'（設備・建具は自由配置）':'')+' ｜ '+msg; }
 function setTool(t){ if(t!=='room') roomDraft=null; tool=t; if(t!=='select'){ if(t!=='door'&&t!=='window') selOpenPt=null; if(t!=='text') selText=null; selWallPt=null; selDim=null; }
   $$('#rail button').forEach(b=>b.classList.toggle('on',b.dataset.tool===t)); $$('#panel section').forEach(s=>s.classList.toggle('on',s.dataset.for===t)); setStatus(hintOf(t)); cv.style.cursor=toolCursor(t); hover=null; updatePanels(); render(); }
