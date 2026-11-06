@@ -197,6 +197,7 @@ kbd{font:11px ui-monospace,monospace;background:#F0F2F5;border:1px solid var(--l
     <section data-for="window">
       <h2>窓</h2>
       <div class="chips icons" id="winTypes"></div>
+      <div id="bayPrefBox" style="display:none"><h3>出窓の形</h3><div class="chips icons" id="bayPrefShape"></div><h3>出幅</h3><div class="seg" id="bayPrefDepth"></div></div>
       <p class="hint">壁をクリックすると、その種類の標準幅で窓を置きます。壁に沿ってドラッグすると幅を決められます。<br>配置済みの窓をクリックすると選択され、下で幅を数値で変えられます。</p>
     </section>
 
@@ -252,6 +253,7 @@ kbd{font:11px ui-monospace,monospace;background:#F0F2F5;border:1px solid var(--l
       <h3 id="openSelName">選択中</h3>
       <label class="row">幅 <span><input type="number" id="openW" min="200" max="6000" step="10"> mm</span></label>
       <div id="openNBox"><h3>枚数</h3><div class="seg" id="openNSeg"></div></div>
+      <div id="openBayBox"><h3>出窓の形</h3><div class="chips icons" id="openBayShape"></div><h3>出幅</h3><div class="seg" id="openBayDepth"></div></div>
       <label class="row" id="openShRow"><span><input type="checkbox" id="openSh"> シャッター・雨戸（外側）</span></label>
       <label class="row" id="openGrRow"><span><input type="checkbox" id="openGr"> 面格子（外側）</span></label>
       <div class="stack">
@@ -393,7 +395,10 @@ const OPEN = {
 // 建具の枚数（指定が無ければ型の標準。折れ戸だけは幅から自動）
 const openPanels=o=>{ const d=OPEN[o.t]; return (o.n&&d&&d.panels&&d.panels.includes(o.n))?o.n:(d&&d.panels?d.panels[0]:1); };
 const openPref={};   // 型ごとに、最後に選んだ枚数（次に置くときに使う）
-const newOpening=(t,f)=>{ const o={t,f:f||0}; if(openPref[t]) o.n=openPref[t]; return o; };
+// 出窓の形 bs（無し＝台形）と出幅 bd（mm、無し＝450）。選んだ値は bayPref に覚えて次に置く出窓に使う
+const BAY_SHAPES=[['trap','台形'],['rect','角形'],['tri','三角'],['arc','弓形']], BAY_DEPTHS=[300,450,600], BAY_D0=450;
+const bayPref={};
+const newOpening=(t,f)=>{ const o={t,f:f||0}; if(openPref[t]) o.n=openPref[t]; if(t==='bay') Object.assign(o,bayPref); return o; };
 // ===== 設備・家具 =====
 // FIX[type] = {name, cat, legacy?, vars:[{id,name,w,h,presets,draw(c,w,h)}]}。w×h は標準の実寸 mm（幅×奥行き）
 // draw は mm 単位のローカル座標（y=0 が壁側＝背面）で、サイズに合わせて描く。設備には文字を書かない（名前は文字ツールで書き足す）
@@ -712,7 +717,7 @@ const sameLine=(p,q)=>Math.abs(p.ux-q.ux)<1e-6&&Math.abs(p.uy-q.uy)<1e-6&&Math.a
 const onLine=(s,L)=>sameLine(lineOf(s),L);
 const P=(L,t)=>[t*L.ux+L.n*L.uy, t*L.uy-L.n*L.ux];
 const along=(L,w)=>w[0]*L.ux+w[1]*L.uy;
-const sameO=(a,b)=>(!a&&!b)||(!!a&&!!b&&a.t===b.t&&(a.f||0)===(b.f||0)&&(a.n||0)===(b.n||0)&&!a.sh===!b.sh&&!a.gr===!b.gr);
+const sameO=(a,b)=>(!a&&!b)||(!!a&&!!b&&a.t===b.t&&(a.f||0)===(b.f||0)&&(a.n||0)===(b.n||0)&&!a.sh===!b.sh&&!a.gr===!b.gr&&(a.bs||'')===(b.bs||'')&&(a.bd||0)===(b.bd||0));
 const r3=v=>Math.round(v*1000)/1000;   // 直線から戻した座標の浮動小数の誤差を 0.001mm で丸める
 function segFrom(L,a,b,o,th){ const [x1,y1]=P(L,a),[x2,y2]=P(L,b); return mkSeg(r3(x1),r3(y1),r3(x2),r3(y2),o,th); }
 const REMOVE = Symbol('remove');
@@ -1049,11 +1054,20 @@ function drawOpening(c,z,t,L,o,bg){
     case 'winfloor': { frame(); sashes(lw*1.8,np); const d=Math.max(3,t*0.5), y=s>0?t/2:-t/2-d; c.fillStyle=bg; c.fillRect(0,y,L,d); c.lineWidth=lwT; c.strokeStyle=INK; c.strokeRect(0,y,L,d); outside(); break; }
     case 'fix': frame(); c.lineWidth=lw*1.3; LN(c,0,0,L,0); outside(); break;
     case 'casement': frame(); c.lineWidth=lw; LN(c,0,0,L,0); leaf(hx,L*0.8,ux,ny,ny*g,Math.max(1.5,pt*0.6)); outside(); break;
-    case 'bay': { const d=450*z, e=Math.min(d*0.6,L*0.25), y0=s*t/2;
-      c.fillStyle=bg; c.beginPath(); c.moveTo(0,y0); c.lineTo(e,y0+s*d); c.lineTo(L-e,y0+s*d); c.lineTo(L,y0); c.closePath(); c.fill();
-      c.fillStyle=GLASS; c.fillRect(e,y0+s*d*0.78,L-2*e,s*d*0.22);
-      c.lineWidth=lw; c.strokeStyle=INK; c.beginPath(); c.moveTo(0,y0); c.lineTo(e,y0+s*d); c.lineTo(L-e,y0+s*d); c.lineTo(L,y0); c.stroke();
-      c.lineWidth=lwT; LN(c,e*0.78,y0+s*d*0.78,L-e*0.78,y0+s*d*0.78); LN(c,0,y0,L,y0); break; }
+    case 'bay': { // 出窓：壁の外へ出た窓台の外形 pts（壁の面 y0 から外向き s）。窓台は背景で塗り、外形に沿った内側の帯をガラス面にする
+      const y0=s*t/2, d=Math.min((o.bd||BAY_D0)*z, Math.max(L*0.9,t)), sh=o.bs||'trap'; let pts;
+      if(sh==='rect') pts=[[0,0],[0,d],[L,d],[L,0]];
+      else if(sh==='tri') pts=[[0,0],[L/2,d],[L,0]];
+      else if(sh==='arc'){ pts=[]; for(let i=0;i<=24;i++){ const a=Math.PI*i/24; pts.push([L/2-L/2*Math.cos(a), d*Math.sin(a)]); } }
+      else { const e=Math.min(d*0.6,L*0.25); pts=[[0,0],[e,d],[L-e,d],[L,0]]; }
+      pts=pts.map(([x,y])=>[x,y0+s*y]);
+      const path=()=>{ c.beginPath(); pts.forEach(([x,y],i)=>i?c.lineTo(x,y):c.moveTo(x,y)); };
+      path(); c.closePath(); c.fillStyle=bg; c.fill();
+      const gw=Math.max(2,Math.min(d*0.22,t*0.8));
+      c.save(); path(); c.closePath(); c.clip(); c.lineJoin='miter';
+      path(); c.lineWidth=2*gw+lwT*2; c.strokeStyle=INK; c.stroke(); path(); c.lineWidth=2*gw; c.strokeStyle=GLASS; c.stroke(); c.restore();
+      c.lineJoin='miter'; path(); c.lineWidth=lw; c.strokeStyle=INK; c.stroke();
+      c.lineWidth=lwT; LN(c,0,y0,L,y0); break; }
     case 'small': frame(); c.lineWidth=lw; c.setLineDash(dash); LN(c,0,0,L,0); c.setLineDash([]); outside(); break;
     default: c.lineWidth=lw; LN(c,0,0,L,0);
   }
@@ -1416,21 +1430,29 @@ $('#textDel').onclick=()=>{ if(!selText) return; state.texts.splice(state.texts.
 
 // 建具の種類チップと選択パネル
 // チップの小さな記号図：短い壁の間に建具を 1 つ描く
-function openIcon(id){ const W=46,H=36,d=window.devicePixelRatio||1, cv=document.createElement('canvas'); cv.width=W*d; cv.height=H*d; cv.style.width=W+'px'; cv.style.height=H+'px';
+function openIcon(id,ex){ const W=46,H=36,d=window.devicePixelRatio||1, cv=document.createElement('canvas'); cv.width=W*d; cv.height=H*d; cv.style.width=W+'px'; cv.style.height=H+'px';
   const c=cv.getContext('2d'); c.scale(d,d); const z=0.03, t=5, L=id==='slide1'?19:24, x0=id==='slide1'?3:(W-L)/2, y=7;   // 片引き戸は右に収まる位置まで入るよう左へ寄せる
-  c.fillStyle=INK; c.fillRect(0,y-t/2,x0,t); c.fillRect(x0+L,y-t/2,W-x0-L,t); c.save(); c.translate(x0,y); drawOpening(c,z,t,L,{t:id,f:0},'#fff'); c.restore(); return cv; }
+  c.fillStyle=INK; c.fillRect(0,y-t/2,x0,t); c.fillRect(x0+L,y-t/2,W-x0-L,t); c.save(); c.translate(x0,y); drawOpening(c,z,t,L,{t:id,f:0,...ex},'#fff'); c.restore(); return cv; }
 function makeTypeChips(el,kind,get,set){ el.innerHTML=''; for(const id in OPEN){ if(OPEN[id].kind!==kind) continue; const b=document.createElement('button'); b.appendChild(openIcon(id)); const sp=document.createElement('span'); sp.textContent=OPEN[id].name; b.appendChild(sp); b.dataset.id=id; b.classList.toggle('on',get()===id);
   b.onclick=()=>{ set(id); [...el.children].forEach(x=>x.classList.toggle('on',x===b)); setStatus(hintOf(tool)); }; el.appendChild(b); } }
 makeTypeChips($('#doorTypes'),'door',()=>doorSub,v=>doorSub=v);
-makeTypeChips($('#winTypes'),'win',()=>winSub,v=>winSub=v);
+// 出窓の形・出幅のボタン（cur は今の値を持つ建具か bayPref、set は {bs} / {bd} を受け取る。既定値は空にして保存する）
+function buildBayControls(shapeSel,depthSel,cur,set){
+  const se=$(shapeSel), de=$(depthSel); se.innerHTML=''; de.innerHTML='';
+  for(const [id,name] of BAY_SHAPES){ const b=document.createElement('button'); b.appendChild(openIcon('bay',{bs:id})); const sp=document.createElement('span'); sp.textContent=name; b.appendChild(sp);
+    b.classList.toggle('on',(cur.bs||'trap')===id); b.onclick=()=>set({bs:id==='trap'?undefined:id}); se.appendChild(b); }
+  for(const v of BAY_DEPTHS){ const b=document.createElement('button'); b.textContent=v+'mm'; b.classList.toggle('on',(cur.bd||BAY_D0)===v); b.onclick=()=>set({bd:v===BAY_D0?undefined:v}); de.appendChild(b); } }
+function updateBayPref(){ $('#bayPrefBox').style.display=winSub==='bay'?'':'none'; if(winSub==='bay') buildBayControls('#bayPrefShape','#bayPrefDepth',bayPref,ch=>{ Object.assign(bayPref,ch); for(const k in bayPref) if(!bayPref[k]) delete bayPref[k]; updateBayPref(); }); }
+makeTypeChips($('#winTypes'),'win',()=>winSub,v=>{ winSub=v; updateBayPref(); });
 function updateOpenPanel(){ const s=(tool==='door'||tool==='window'||tool==='select')?selOpen():null; $('#openSel').style.display=s?'':'none'; if(!s) return;
   const o=OPEN[s.o.t]||{name:s.o.t,flips:1}; $('#openSelName').textContent='選択中：'+o.name+(o.panels&&(s.o.n||s.o.t!=='fold')?'（'+openPanels(s.o)+'枚）':'');
   const nb=$('#openNSeg'); $('#openNBox').style.display=o.panels?'':'none'; nb.innerHTML='';
   if(o.panels) for(const n of o.panels){ const b=document.createElement('button'); b.textContent=n+'枚'; b.classList.toggle('on',s.o.n?s.o.n===n:(s.o.t!=='fold'&&openPanels(s.o)===n)); b.onclick=()=>setOpenOpt({n}); nb.appendChild(b); }
+  $('#openBayBox').style.display=s.o.t==='bay'?'':'none'; if(s.o.t==='bay') buildBayControls('#openBayShape','#openBayDepth',s.o,ch=>{ setOpenOpt(ch); Object.assign(bayPref,ch); for(const k in bayPref) if(!bayPref[k]) delete bayPref[k]; });
   const ops=o.opts||[]; $('#openShRow').style.display=ops.includes('sh')?'':'none'; $('#openGrRow').style.display=ops.includes('gr')?'':'none'; $('#openSh').checked=!!s.o.sh; $('#openGr').checked=!!s.o.gr; $('#openW').value=Math.round(lineOf(s).len/10)*10; $('#openFlip').disabled=o.flips<2; }
 $('#openW').onchange=e=>{ const w=clamp(Math.round((+e.target.value||0)/10)*10,200,6000); setOpeningWidth(w); e.target.blur(); };
 // 選択中の建具の枚数・オプションを変える（枚数は次に置くときの標準にもする）
-function setOpenOpt(ch){ const s=selOpen(); if(!s) return; const o={...s.o,...ch}; for(const k of ['sh','gr']) if(!o[k]) delete o[k]; if('n' in ch) openPref[o.t]=ch.n; s.o=o; normalize(); regions=null; commit(); updateOpenPanel(); }
+function setOpenOpt(ch){ const s=selOpen(); if(!s) return; const o={...s.o,...ch}; for(const k of ['sh','gr','bs','bd']) if(!o[k]) delete o[k]; if('n' in ch) openPref[o.t]=ch.n; s.o=o; normalize(); regions=null; commit(); updateOpenPanel(); }
 $('#openSh').onchange=e=>setOpenOpt({sh:e.target.checked}); $('#openGr').onchange=e=>setOpenOpt({gr:e.target.checked});
 $('#openFlip').onclick=()=>{ const s=selOpen(); if(!s) return; cycleFlip(s); commit(); updateOpenPanel(); };
 $('#openDel').onclick=()=>{ const s=selOpen(); if(!s) return; const L=lineOf(s); replaceRange(L,L.a,L.b,null); selOpenPt=null; commit(); updateOpenPanel(); };
