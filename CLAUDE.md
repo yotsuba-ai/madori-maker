@@ -133,6 +133,10 @@
 - 文字の位置は既定で 1mm 単位の自由配置（`textSnapV`）。文字ツールの「グリッドに合わせる」（`state.textSnap`、設定として保存）で吸着、Alt で一時的に逆。選択中の文字は矢印キーで 10mm（Shift で 100mm）動かす
 - 字体：文字ごとに `font`（無し＝標準ゴシック / `mincho` 明朝 / `maru` 丸ゴシック / `ud` UDゴシック、`TEXT_FONTS`）と `bold`。描画と幅の計算は `textFont(t,px)`。端末に入っているフォントを使い、無ければ標準のゴシックになる。文字ツールの `#textFontNew` `#textBoldNew` が次に置く文字の既定（`textFontNew` `textBoldNew`）、選択欄 `#textFontSel` `#textBoldSel` で選んだ文字を変える（変えると次に置く文字の既定にもなる）
 
+## 文字の複製・コピー（2026-11-06）
+- `dupText()`：選んだ文字を、横書きは 1 行下（大きさ×1.3）、縦書きは 1 列右に複製（字体・大きさ・向きもそのまま）。Ctrl+D（`doAction('dup')`）、浮かぶボタン、選択欄 `#textDup` から
+- Ctrl+C / Ctrl+V（入力欄の外）：`copySel()` が選んだ文字か設備を `clip` に覚え、`pasteClip()` が貼るたびに `max(グリッド, 300mm)` ずつ斜め下へずらして置く。何も選んでいなければブラウザ本来の動作のまま
+
 ## 文字の大きさ
 - 文字の大きさは文字の高さ（図面上の mm）で 100〜2000mm、10mm 刻み（`tsClamp`）。文字ツールの欄は新しく置く文字の既定値 `textSize`、選択欄（`#selTextSize` / `#selTextSizeR`）は選んだ文字の大きさ。スライダーと数値入力を `syncTextSize()` で揃える。
 - 選んだ文字の右下につまみ（ハンドル `ts`）を出し、ドラッグ（`resizeText`）で対角線方向に引いた割合で拡大縮小する。

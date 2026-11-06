@@ -237,7 +237,7 @@ kbd{font:11px ui-monospace,monospace;background:#F0F2F5;border:1px solid var(--l
       <label class="row"><span><input type="checkbox" id="textBoldNew"> 太字</span></label>
       <h3>置き方</h3>
       <label class="row"><span><input type="checkbox" id="textSnap"> グリッドに合わせる</span></label>
-      <p class="hint">オフのときは好きな位置に置けます（1mm 単位）。<kbd>Alt</kbd> を押している間は一時的に逆になります。選んだ文字は矢印キーで 10mm（<kbd>Shift</kbd> で 100mm）ずつ動かせます。</p>
+      <p class="hint">オフのときは好きな位置に置けます（1mm 単位）。<kbd>Alt</kbd> を押している間は一時的に逆になります。選んだ文字は矢印キーで 10mm（<kbd>Shift</kbd> で 100mm）ずつ動かせます。<br><kbd>Ctrl+D</kbd> で複製（すぐ下に置きます）、<kbd>Ctrl+C</kbd> / <kbd>Ctrl+V</kbd> でコピー・貼り付けもできます。</p>
       <p class="hint">クリックで文字を置き、下の欄で内容を打ち込みます。置いた文字はクリックで選択、ドラッグで移動できます。<br>大きさは文字の高さ（図面上の mm）です。選んだ文字は、右下の四角いつまみを引っ張っても大きさを変えられます。</p>
     </section>
 
@@ -313,7 +313,7 @@ kbd{font:11px ui-monospace,monospace;background:#F0F2F5;border:1px solid var(--l
         <h3>重なり順</h3>
         <div class="seg"><button data-z="back">最背面</button><button data-z="down">背面へ</button><button data-z="up">前面へ</button><button data-z="front">最前面</button></div>
         <p class="hint">文字どうしの順番です。文字は設備や壁より常に前に出ます。</p>
-        <div class="stack"><button id="textDel" class="danger">この文字を削除</button></div>
+        <div class="stack"><button id="textDup">この文字を複製（Ctrl+D）</button><button id="textDel" class="danger">この文字を削除</button></div>
       </div>
       <div id="roomSel" class="selbox" style="display:none">
         <h3>選択中：部屋</h3>
@@ -1406,6 +1406,8 @@ window.addEventListener('keydown',e=>{
   if((e.ctrlKey||e.metaKey)&&e.key==='z'){e.preventDefault(); e.shiftKey?redoFn():undo(); return;}
   if((e.ctrlKey||e.metaKey)&&e.key==='y'){e.preventDefault(); redoFn(); return;}
   if((e.ctrlKey||e.metaKey)&&(e.key==='d'||e.key==='D')){e.preventDefault(); doAction('dup'); return;}
+  if((e.ctrlKey||e.metaKey)&&!e.shiftKey&&(e.key==='c'||e.key==='C')){ if(copySel()) e.preventDefault(); return; }
+  if((e.ctrlKey||e.metaKey)&&!e.shiftKey&&(e.key==='v'||e.key==='V')){ if(pasteClip()) e.preventDefault(); return; }
   if(e.ctrlKey||e.metaKey||e.altKey) return;
   const tools=['wall','erase','door','window','room','fix','text','pan','dim']; const n=parseInt(e.key); if(n>=1&&n<=9){setTool(tools[n-1]);return;}
   if(e.key==='v'||e.key==='V'){setTool('select');return;}
@@ -1469,6 +1471,7 @@ function updateTextPanel(){ const t=selText&&state.texts.includes(selText)?selTe
 $('#textInput').oninput=e=>{ if(selText){ selText.text=e.target.value; render(); } };
 $('#textInput').onchange=e=>{ if(!selText) return; if(!e.target.value.trim()){ e.target.value=selText.text||'文字'; selText.text=e.target.value; } commit(); };
 $('#textInput').onkeydown=e=>{ if(e.key==='Enter'||e.key==='Escape'){ e.target.blur(); } };
+$('#textDup').onclick=()=>doAction('dup');
 $('#textDel').onclick=()=>{ if(!selText) return; state.texts.splice(state.texts.indexOf(selText),1); selText=null; updateTextPanel(); commit(); };
 
 // 建具の種類チップと選択パネル
@@ -1624,6 +1627,13 @@ function visKind(){
   if(tool==='select'&&selWall()) return 'wall';
   if(tool==='select'&&selRoom) return 'room';
   return null; }
+// 文字の複製：横書きは 1 行下、縦書きは 1 列右に置く（字体・大きさ・向きもそのまま）
+function dupText(){ if(visKind()!=='text'||!selText) return; const t=selText, g=Math.round(t.size*1.3), n={...t,x:t.x+(t.vert?g:0),y:t.y+(t.vert?0:g)}; state.texts.push(n); selText=n; commit(); updateTextPanel(); }
+// コピー・貼り付け（Ctrl+C / Ctrl+V）：選んだ文字か設備を覚えておき、貼り付けるたびに少しずつずらして置く
+let clip=null;
+function copySel(){ const k=visKind(); if(k==='text'&&selText) clip={kind:'text',o:{...selText},n:0}; else if(k==='fix'&&selFix) clip={kind:'fix',o:{...selFix},n:0}; else return false; setStatus(k==='text'?'文字をコピーしました（Ctrl+V で貼り付け）':'設備をコピーしました（Ctrl+V で貼り付け）'); return true; }
+function pasteClip(){ if(!clip) return false; clip.n++; const off=Math.max(state.grid,snapV(300)||state.grid)*clip.n, n={...clip.o,x:clip.o.x+off,y:clip.o.y+off};
+  clearSel(); if(clip.kind==='text'){ state.texts.push(n); selText=n; } else { state.fixtures.push(n); selFix=n; } commit(); updatePanels(); return true; }
 function dupFix(){ if(visKind()!=='fix') return; const off=Math.max(state.grid,snapV(300)||state.grid); const n={...selFix,x:selFix.x+off,y:selFix.y+off}; state.fixtures.push(n); selFix=n; commit(); updateFixPanel(); }
 function zBox(k,o){ if(k==='fix'){ const [fw,fh]=fixDims(o); return [o.x,o.y,o.x+fw,o.y+fh]; } return textBox(o); }
 function zOrder(a){ const k=visKind(); if(k!=='fix'&&k!=='text') return; const arr=k==='fix'?state.fixtures:state.texts, it=k==='fix'?selFix:selText, i=arr.indexOf(it); if(i<0) return; let to=i;
@@ -1647,7 +1657,7 @@ function deleteSel(){ const k=visKind(); if(!k||k==='area') return;   // 面積�
 function doAction(a){ const k=visKind();
   if(a==='rot'&&k==='fix'){ selFix.rot=(selFix.rot+1)%4; commit(); }
   else if(a==='mir'&&k==='fix'){ selFix.mir=!selFix.mir; commit(); }
-  else if(a==='dup'){ if(k==='multi') dupMulti(); else dupFix(); }
+  else if(a==='dup'){ if(k==='multi') dupMulti(); else if(k==='text') dupText(); else dupFix(); }
   else if(a==='del') deleteSel();
   else if(a==='up'||a==='down'||a==='front'||a==='back') zOrder(a);
   else if(a==='vert'&&k==='text') setTextVert(!selText.vert);
@@ -1662,7 +1672,7 @@ const FB_ICON={rot:'<path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/>',
   edit:'<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M14 6l4 4"/>',add:'<path d="M12 5v14M5 12h14"/>',clear:'<path d="M6 6l12 12M18 6L6 18"/>',flip:'<path d="M4 12h16M8 8l-4 4 4 4M16 8l4 4-4 4"/>',
   vert:'<path d="M7 4h10M12 4v8"/><path d="M12 12v8M8.5 16.5L12 20l3.5-3.5"/>',up:'<rect x="3" y="10" width="12" height="11" rx="1.5"/><path d="M19 14V4M15.5 7.5L19 4l3.5 3.5"/>',down:'<rect x="3" y="3" width="12" height="11" rx="1.5"/><path d="M19 10v10M15.5 16.5L19 20l3.5-3.5"/>'};
 const FB_TITLE={rot:'回転（R）',mir:'左右反転（M）',dup:'複製（Ctrl+D）',del:'削除（Delete）',edit:'文字を編集',vert:'縦書き／横書き',flip:'向きを変える',add:'タップで部屋を足す／外す',clear:'選択を解除（Esc）',up:'前面へ（]）',down:'背面へ（[）'};
-const FB_ACTS={multi:['dup','del'],fix:['rot','mir','up','down','dup','del'],text:['edit','vert','up','down','del'],open:['flip','del'],wall:['del'],dim:['del'],room:['del'],area:['add','clear']};
+const FB_ACTS={multi:['dup','del'],fix:['rot','mir','up','down','dup','del'],text:['edit','vert','dup','up','down','del'],open:['flip','del'],wall:['del'],dim:['del'],room:['del'],area:['add','clear']};
 let fbKind=null;
 function selScreenBox(k){ const z=view.z, S=(x,y)=>[(x-view.x)*z,(y-view.y)*z];
   const segBox=g=>{ const [ax,ay]=S(g.x1,g.y1),[bx,by]=S(g.x2,g.y2); return [Math.min(ax,bx),Math.min(ay,by)-8,Math.max(ax,bx),Math.max(ay,by)+8]; };
