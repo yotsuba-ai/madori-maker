@@ -49,6 +49,10 @@
 - 文字：クリックで「文字」を置いて選択し、パネルの入力欄 `#textInput` で内容を編集（`selText`、`updateTextPanel()`）。クリックで選択、ドラッグで移動、削除ボタン／Delete キー。サイズは mm（小 320 / 中 410 / 大 590）で、選択中に変えると即反映
 - 部屋パネル末尾 `#roomTotal` に設定済みの部屋の面積合計を表示（`paint()` で更新）
 - Undo/Redo（100手）、localStorage 自動保存（キー `madori-maker-v2`、失敗時はメモリ保持）、JSON 保存/読込
+- ファイルの読込・保存（2026-11-06）：ヘッダーの「読込」「保存」「名前を付けて保存」とファイル名表示 `#fileName`（未保存の変更があると先頭に ●）。今のファイルは `fileCur {handle,name,saved}`
+  - Chrome / Edge（`FS_API`＝`showOpenFilePicker` と `showSaveFilePicker` がある）：「読込」は `showOpenFilePicker` で開いて handle を持つ。「保存」はその handle に上書き（`requestPermission({mode:'readwrite'})` → `createWritable`）、handle が無ければ「名前を付けて保存」。「名前を付けて保存」は `showSaveFilePicker`（`suggestedName` は今のファイル名、`id:'madori'` で前回のフォルダを覚える）で保存し、以後の「保存」はそのファイルへ上書き。キャンセル（AbortError）は何もしない
+  - それ以外のブラウザ：「読込」は `#fileIn`、「保存」は読み込んだファイルと同じ名前でダウンロード、「名前を付けて保存」は `prompt` で名前を聞いてダウンロード（保存場所はブラウザのダウンロード設定に従う）
+  - ショートカット：Ctrl/⌘+S 保存、Ctrl/⌘+Shift+S 名前を付けて保存、Ctrl/⌘+O 読込（入力欄にいても効く）。「白紙」で `fileCur` を空にする（白紙の図面で元のファイルを上書きしないため）。handle はページを開き直すと消える（図面は localStorage から戻るが、「保存」は名前を付けて保存になる）
 - 保存形式 v2：`{v:2, grid, thick, joMode, walls:[…], texts, fixtures, rooms}`。旧 v1（マス座標・壁はキー文字列）は `migrateV1()` が起動時・読込時に自動変換する
 - JPEG 書き出し（2026-10-23 に PNG から変更、品質 0.92、`exportImgBlob`）：白背景・グリッドなし、455mm=96px（10m の間取りで約 2,100px）、描画範囲に余白 1.5×455mm
 - 選択ツール（`tool='select'`、レール先頭、キー V）：クリックで 文字→設備→寸法線→建具→壁→部屋 の順に拾う（`hitText / hitFix / hitDim / nearestSeg / regionAt`）。設備・文字はドラッグで移動

@@ -22,6 +22,8 @@ html,body{margin:0;height:100%;font-family:"Hiragino Sans","Noto Sans JP","Yu Go
 body{display:grid;grid-template-rows:48px 1fr;height:100vh;height:100dvh;overflow:hidden}
 header{display:flex;align-items:center;gap:6px;padding:0 12px;background:var(--panel);border-bottom:1px solid var(--line);overflow-x:auto;white-space:nowrap}
 header h1{font-size:15px;font-weight:700;margin:0 10px 0 0;letter-spacing:.02em}
+header .fname{font-size:12px;color:var(--muted);max-width:240px;overflow:hidden;text-overflow:ellipsis;margin-right:2px}
+header .fname.dirty::before{content:'● ';color:#C2410C}
 .sp{flex:1}
 button,select,input[type=text],input[type=number]{font:inherit;color:var(--ink);background:#F3F5F8;border:1px solid var(--line);border-radius:6px;padding:6px 10px;line-height:1.2}
 button{cursor:pointer}
@@ -113,8 +115,10 @@ kbd{font:11px ui-monospace,monospace;background:#F0F2F5;border:1px solid var(--l
   <button id="redo" title="やり直す (Ctrl+Y)">↷ 進む</button>
   <button id="zoomOut">－</button><button id="zoomIn">＋</button><button id="zoomFit">全体</button>
   <span class="sp"></span>
-  <button id="loadJson">読込</button>
-  <button id="saveJson">保存</button>
+  <span id="fileName" class="fname"></span>
+  <button id="loadJson" title="読込（Ctrl+O）">読込</button>
+  <button id="saveJson" title="上書き保存（Ctrl+S）">保存</button>
+  <button id="saveAs" title="名前を付けて保存（Ctrl+Shift+S）">名前を付けて保存</button>
   <button id="clearAll">白紙</button>
   <button id="exportImg" class="primary">JPEG書き出し</button>
   <input type="file" id="fileIn" accept=".json" hidden>
@@ -860,7 +864,11 @@ function undo(){ if(!hist.length) return; redo.push(snap()); applySnap(hist.pop(
 function redoFn(){ if(!redo.length) return; hist.push(snap()); applySnap(redo.pop()); lastSnap=snap(); save(); updatePanels(); render(); }
 function fullDoc(){ return {v:2,grid:state.grid,angle:state.angle,thick:state.thick,joMode:state.joMode,dimUnit:state.dimUnit,fixStyle:state.fixStyle,freePlace:state.freePlace,areaMode:state.areaMode,...JSON.parse(snap())}; }
 let mem=null;
-function save(){ const s=JSON.stringify(fullDoc()); try{localStorage.setItem(STORE_KEY,s);}catch(e){mem=s;} }
+// 読込・保存したファイル。handle は File System Access API（Chrome / Edge）で開いたときだけ持ち、上書き保存に使う。saved は最後に読込・保存した時点の内容
+let fileCur={handle:null,name:null,saved:null};
+function save(){ const s=JSON.stringify(fullDoc()); try{localStorage.setItem(STORE_KEY,s);}catch(e){mem=s;} updateFileLabel(s); }
+function updateFileLabel(s){ const el=document.getElementById('fileName'); if(!el) return; el.textContent=fileCur.name||''; const dirty=!!fileCur.name&&(s??JSON.stringify(fullDoc()))!==fileCur.saved;
+  el.classList.toggle('dirty',dirty); el.title=fileCur.name?(dirty?'保存していない変更があります。':'保存済みです。')+(fileCur.handle?'「保存」でこのファイルに上書きします。':'このブラウザでは元のファイルに直接上書きできないため、「保存」は同じ名前でダウンロードします。'):''; }
 // v1（1マス=455mm のマス座標、壁はキー "x1,y1,x2,y2"）を mm の線分形式に変換する
 function migrateV1(o){
   const M=MOD, walls=[];
@@ -1345,6 +1353,8 @@ for(const ev of ['gesturestart','gesturechange','gestureend']) document.addEvent
 cv.addEventListener('wheel',e=>{ e.preventDefault(); const f=Math.pow(1.1,-e.deltaY/100); const z=clamp(view.z*f,ZMIN,ZMAX); const [wx,wy]=toWorld(e.offsetX,e.offsetY); view.x=wx-e.offsetX/z; view.y=wy-e.offsetY/z; view.z=z; render(); },{passive:false});
 cv.addEventListener('contextmenu',e=>e.preventDefault());
 window.addEventListener('keydown',e=>{
+  if((e.ctrlKey||e.metaKey)&&!e.altKey&&(e.key==='s'||e.key==='S')){ e.preventDefault(); if(document.activeElement&&document.activeElement.blur) document.activeElement.blur(); e.shiftKey?saveAs():saveFile(); return; }
+  if((e.ctrlKey||e.metaKey)&&!e.altKey&&!e.shiftKey&&(e.key==='o'||e.key==='O')){ e.preventDefault(); openFile(); return; }
   if(e.target.tagName==='INPUT'||e.target.tagName==='SELECT') return;
   if(e.code==='Space'){space=true;e.preventDefault();return;}
   if((e.ctrlKey||e.metaKey)&&e.key==='z'){e.preventDefault(); e.shiftKey?redoFn():undo(); return;}
@@ -1619,10 +1629,45 @@ function bbox(){ let x1=Infinity,y1=Infinity,x2=-Infinity,y2=-Infinity, any=fals
   return any?{x1,y1,x2,y2}:null; }
 function fitView(){ const b=bbox()||{x1:AREA_W/2-16*MOD,y1:AREA_H/2-12*MOD,x2:AREA_W/2+16*MOD,y2:AREA_H/2+12*MOD}; const m=2*MOD; const z=clamp(Math.min(W/(b.x2-b.x1+2*m),(H-30)/(b.y2-b.y1+2*m)),ZMIN,60/MOD); view.z=z; view.x=(b.x1+b.x2)/2-W/2/z; view.y=(b.y1+b.y2)/2-H/2/z; render(); }
 $('#zoomFit').onclick=fitView;
-$('#clearAll').onclick=()=>{ if(!confirm('図面を白紙にします。よろしいですか？')) return; state.walls=[]; state.texts=[]; state.fixtures=[]; state.rooms=[]; state.dims=[]; clearSel(); updatePanels(); commit(); };
-$('#saveJson').onclick=()=>{ const blob=new Blob([JSON.stringify(fullDoc(),null,1)],{type:'application/json'}); dl(URL.createObjectURL(blob),'madori-'+stamp()+'.json'); };
-$('#loadJson').onclick=()=>$('#fileIn').click();
-$('#fileIn').onchange=e=>{ const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{ try{ const o=parseDoc(JSON.parse(r.result)); applyDoc(o); applySettings(o); syncPanels(); commit(); fitView(); }catch(err){alert('読み込めませんでした');} }; r.readAsText(f); e.target.value=''; };
+$('#clearAll').onclick=()=>{ if(!confirm('図面を白紙にします。よろしいですか？')) return; state.walls=[]; state.texts=[]; state.fixtures=[]; state.rooms=[]; state.dims=[]; fileCur={handle:null,name:null,saved:null}; clearSel(); updatePanels(); commit(); };
+// ===== ファイルの読込・保存 =====
+// Chrome / Edge（パソコン）は File System Access API で、読み込んだファイルへの上書き保存と、保存場所・名前を選んでの保存ができる。
+// それ以外（Safari・Firefox・スマホ）はダウンロードで保存する（保存場所はブラウザのダウンロード設定に従う）
+const FS_API=typeof window.showOpenFilePicker==='function'&&typeof window.showSaveFilePicker==='function';
+const JSON_TYPES=[{description:'間取りデータ（JSON）',accept:{'application/json':['.json']}}];
+const docText=()=>JSON.stringify(fullDoc(),null,1);
+const isAbort=e=>e&&e.name==='AbortError';
+function markSaved(handle,name){ fileCur={handle,name,saved:JSON.stringify(fullDoc())}; updateFileLabel(); }
+function loadText(text,name,handle){ let o; try{ o=parseDoc(JSON.parse(text)); }catch(err){ alert('読み込めませんでした'); return; }
+  applyDoc(o); applySettings(o); syncPanels(); markSaved(handle||null,name); commit(); fitView(); setStatus('「'+name+'」を読み込みました'); }
+async function openFile(){
+  if(!FS_API){ $('#fileIn').click(); return; }
+  try{ const [h]=await window.showOpenFilePicker({types:JSON_TYPES,id:'madori',multiple:false}); const f=await h.getFile(); loadText(await f.text(),f.name,h); }
+  catch(e){ if(!isAbort(e)) alert('読み込めませんでした'); } }
+async function writeHandle(h){ const w=await h.createWritable(); await w.write(docText()); await w.close(); }
+function downloadAs(name){ const blob=new Blob([docText()],{type:'application/json'}); const url=URL.createObjectURL(blob); dl(url,name); setTimeout(()=>URL.revokeObjectURL(url),10000); }
+// 保存：読み込んだ（または保存した）ファイルがあれば上書き、無ければ「名前を付けて保存」
+async function saveFile(){
+  const h=fileCur.handle;
+  if(h){ try{ if(h.requestPermission&&await h.requestPermission({mode:'readwrite'})!=='granted') throw new Error('denied');
+      await writeHandle(h); markSaved(h,fileCur.name); setStatus('「'+fileCur.name+'」に上書き保存しました'); }
+    catch(e){ if(!isAbort(e)) alert('上書き保存できませんでした。「名前を付けて保存」で保存してください'); }
+    return; }
+  if(!FS_API&&fileCur.name){ downloadAs(fileCur.name); markSaved(null,fileCur.name); setStatus('「'+fileCur.name+'」をダウンロードしました（このブラウザでは元のファイルへの上書きはできません）'); return; }
+  return saveAs(); }
+// 名前を付けて保存：保存場所と名前を選ぶ。以後の「保存」はそのファイルへの上書きになる
+async function saveAs(){
+  const name=fileCur.name||('madori-'+stamp()+'.json');
+  if(FS_API){ try{ const h=await window.showSaveFilePicker({suggestedName:name,types:JSON_TYPES,id:'madori'}); await writeHandle(h); markSaved(h,h.name); setStatus('「'+h.name+'」に保存しました'); }
+    catch(e){ if(!isAbort(e)) alert('保存できませんでした'); }
+    return; }
+  let n=prompt('ファイル名を入力してください。\n（このブラウザでは保存場所はダウンロードの設定に従います。保存のたびに場所を選ぶには、ブラウザの設定で「ダウンロード前に保存場所を確認する」をオンにしてください）',name);
+  if(n==null) return; n=n.trim()||name; if(!/\.json$/i.test(n)) n+='.json';
+  downloadAs(n); markSaved(null,n); setStatus('「'+n+'」をダウンロードしました'); }
+$('#saveJson').onclick=saveFile;
+$('#saveAs').onclick=saveAs;
+$('#loadJson').onclick=openFile;
+$('#fileIn').onchange=e=>{ const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>loadText(r.result,f.name,null); r.readAsText(f); e.target.value=''; };
 function stamp(){ const d=new Date(); return d.getFullYear()+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0'); }
 function dl(url,name){ const a=document.createElement('a'); a.href=url; a.download=name; a.click(); }
 // 画像の書き出し。rect（mm の {x1,y1,x2,y2}）を省くと図面全体＋余白
