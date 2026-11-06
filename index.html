@@ -477,9 +477,11 @@ function burner(c,cx,cy,r){ circ(c,cx,cy,r,{thin:true}); circ(c,cx,cy,r*0.42,{th
 // IH の加熱部 1 口（五徳なし、二重の円）
 function ihZone(c,cx,cy,r){ circ(c,cx,cy,r,{thin:true}); circ(c,cx,cy,r*0.62,{thin:true}); }
 // コンロ台：n 口（1〜4）、ih なら IH。縦長の台では配置を 90° 回す
-const HOB_POS={1:[[0.5,0.5,1.3]],2:[[0.28,0.5,1.05],[0.72,0.5,1.05]],3:[[0.27,0.32,1],[0.73,0.32,1],[0.5,0.72,0.85]],4:[[0.27,0.3,0.95],[0.73,0.3,0.95],[0.27,0.72,0.85],[0.73,0.72,0.85]]};
-function hob(c,x,y,w,h,n=3,ih=false){ n=clamp(n|0||3,1,4); const mono=FS.k===FIXCOL.mono; box(c,x,y,w,h,{r:20,fill:ih&&!mono?'dark':'body',thin:true}); const vert=h>w, r=Math.min(w,h)*(n===2?0.24:0.2);
-  for(const [u,v,k] of HOB_POS[n]){ const cx=vert?x+w*v:x+w*u, cy=vert?y+h*u:y+h*v; if(ih){ const keep=FS.k; if(!mono) FS={...FS,k:{...keep,thin:'#C9CED6'}}; ihZone(c,cx,cy,r*k); FS={...FS,k:keep}; } else burner(c,cx,cy,r*k); } }
+// 口の位置 [u（幅方向）, v（奥行き方向：0＝奥・1＝手前）, 大きさ]。3 口は手前に左右 2 口、奥の中央に小さめの 1 口
+const HOB_POS={1:[[0.5,0.5,1.3]],2:[[0.28,0.5,1.05],[0.72,0.5,1.05]],3:[[0.27,0.68,1],[0.73,0.68,1],[0.5,0.3,0.85]],4:[[0.27,0.3,0.95],[0.73,0.3,0.95],[0.27,0.72,0.85],[0.73,0.72,0.85]]};
+// near=true は、立つ側（手前）が y（縦長なら x）の小さい側のとき（対面・アイランド・II 型のコンロ側）
+function hob(c,x,y,w,h,n=3,ih=false,near=false){ n=clamp(n|0||3,1,4); const mono=FS.k===FIXCOL.mono; box(c,x,y,w,h,{r:20,fill:ih&&!mono?'dark':'body',thin:true}); const vert=h>w, r=Math.min(w,h)*(n===2?0.24:0.2);
+  for(const [u,v0,k] of HOB_POS[n]){ const v=near?1-v0:v0, cx=vert?x+w*v:x+w*u, cy=vert?y+h*u:y+h*v; if(ih){ const keep=FS.k; if(!mono) FS={...FS,k:{...keep,thin:'#C9CED6'}}; ihZone(c,cx,cy,r*k); FS={...FS,k:keep}; } else burner(c,cx,cy,r*k); } }
 // キッチンのオプション（設備ごと）：口数 burners、コンロの種類 hob（gas / ih）、食洗機 dw
 const kopt=(f,n=3)=>({n:(f&&f.burners)||n, ih:!!(f&&f.hob==='ih'), dw:!!(f&&f.dw)});
 // 食洗機（シンク横の破線）
@@ -487,11 +489,11 @@ const dishwasher=(c,x,y,w,h)=>box(c,x,y,w,h,{r:15,dash:true,thin:true});
 // コンロ台の幅（4 口は広め）
 const hobW=(o,max)=>Math.min(o.n===4?750:o.n===1?350:600,max);
 // I 型の天板（壁付け）：二重線の天板・シンク・水栓・食洗機・コンロ
-function kitchenI(c,w,h,f){ const o=kopt(f); box(c,0,0,w,h,{fill:'top'}); box(c,25,25,w-50,h-50,{thin:true});
-  const sw=Math.min(800,w*0.3), sx=Math.max(120,w*0.16); sink(c,sx,h*0.22,sw,h*0.6); circ(c,sx+sw/2,h*0.12,22,{thin:true});
+function kitchenI(c,w,h,f,near=false){ const o=kopt(f); box(c,0,0,w,h,{fill:'top'}); box(c,25,25,w-50,h-50,{thin:true});
+  const sw=Math.min(800,w*0.3), sx=Math.max(120,w*0.16); sink(c,sx,near?h*0.18:h*0.22,sw,h*0.6); circ(c,sx+sw/2,near?h*0.88:h*0.12,22,{thin:true});   // 水栓はシンクの奥（対面では腰壁側）
   const hw=hobW(o,w*0.28), hx=w-hw-Math.min(150,w*0.06);
   if(o.dw&&hx-(sx+sw)>=420) dishwasher(c,sx+sw+40,h*0.16,Math.min(450,hx-(sx+sw)-80),h*0.68);
-  if(w>=1400) hob(c,hx,h*0.14,hw,h*0.72,o.n,o.ih); }
+  if(w>=1400) hob(c,hx,h*0.14,hw,h*0.72,o.n,o.ih,near); }
 
 // --- 家具
 // 椅子：中心 cx,cy、幅 cw・奥行き cd、背もたれは ang の向き（0＝上）
@@ -584,9 +586,9 @@ const FIX = {
   kitchen:{name:'キッチン',cat:'kitchen',vars:[
     {id:'I',name:'I型（壁付け）',w:2550,h:650,opts:true,presets:[[1800,650],[2100,650],[2400,650],[2550,650],[2700,650]],draw:kitchenI},
     {id:'face',name:'対面（腰壁付き）',w:2550,h:900,opts:true,presets:[[2400,900],[2550,900],[2700,950]],
-      draw(c,w,h,f){ const kh=Math.min(650,h*0.72); box(c,0,kh,w,h-kh,{fill:'wood'}); kitchenI(c,w,kh,f); }},
+      draw(c,w,h,f){ const kh=Math.min(650,h*0.72); box(c,0,kh,w,h-kh,{fill:'wood'}); kitchenI(c,w,kh,f,true); }},
     {id:'flat',name:'対面（フラット）',w:2550,h:950,opts:true,presets:[[2400,950],[2550,950],[2700,1000]],
-      draw(c,w,h,f){ box(c,0,0,w,h,{fill:'top'}); line(c,0,h*0.72,w,h*0.72,{thin:true,dash:true}); kitchenI(c,w,h*0.72,f); }},
+      draw(c,w,h,f){ box(c,0,0,w,h,{fill:'top'}); line(c,0,h*0.72,w,h*0.72,{thin:true,dash:true}); kitchenI(c,w,h*0.72,f,true); }},
     {id:'L',name:'L型',w:2400,h:1650,opts:true,presets:[[2100,1650],[2400,1650],[2700,1950]],
       draw(c,w,h,f){ const o=kopt(f), d=Math.min(650,w*0.4,h*0.4); poly(c,[[0,0],[w,0],[w,d],[d,d],[d,h],[0,h]],{fill:'top'});
         const sw=Math.min(800,(w-d)*0.5), sx=d+(w-d-sw)*0.55; sink(c,sx,d*0.22,sw,d*0.6); circ(c,sx+sw/2,d*0.12,22,{thin:true});
@@ -596,7 +598,7 @@ const FIX = {
       draw(c,w,h,f){ const o=kopt(f), d=Math.min(650,h*0.35); box(c,0,0,w,d,{fill:'top'}); box(c,0,h-d,w,d,{fill:'top'});
         const sw=Math.min(800,w*0.32), sx=(w-sw)/2; sink(c,sx,d*0.22,sw,d*0.6); circ(c,sx+sw/2,d*0.12,22,{thin:true});
         if(o.dw&&sx>=500) dishwasher(c,sx+sw+40,d*0.16,Math.min(450,w-sx-sw-120),d*0.68);
-        const hw=hobW(o,w*0.3); hob(c,(w-hw)/2,h-d+d*0.14,hw,d*0.72,o.n,o.ih); }},
+        const hw=hobW(o,w*0.3); hob(c,(w-hw)/2,h-d+d*0.14,hw,d*0.72,o.n,o.ih,true); }},
     {id:'U',name:'コの字（U型）',w:2700,h:2100,opts:true,presets:[[2400,1800],[2700,2100],[3000,2400]],
       draw(c,w,h,f){ const o=kopt(f), d=Math.min(650,w*0.3,h*0.35); poly(c,[[0,0],[w,0],[w,h],[w-d,h],[w-d,d],[d,d],[d,h],[0,h]],{fill:'top'});
         const sw=Math.min(800,(w-2*d)*0.6), sx=(w-sw)/2; sink(c,sx,d*0.22,sw,d*0.6); circ(c,sx+sw/2,d*0.12,22,{thin:true});
@@ -604,7 +606,7 @@ const FIX = {
         const hh=hobW(o,(h-d)*0.6); hob(c,d*0.14,d+(h-d-hh)*0.55,d*0.72,hh,o.n,o.ih); }},
     {id:'island',name:'アイランド',w:2550,h:1000,opts:true,presets:[[2100,1000],[2550,1000],[2700,1050]],
       draw(c,w,h,f){ const o=kopt(f); box(c,0,0,w,h,{r:40,fill:'top'}); line(c,0,h*0.7,w,h*0.7,{thin:true,dash:true}); const sw=Math.min(800,w*0.3); sink(c,w*0.14,h*0.13,sw,h*0.45);
-        if(o.dw) dishwasher(c,w*0.14+sw+40,h*0.1,Math.min(450,w*0.14),h*0.5); const hw=hobW(o,w*0.28); hob(c,w*0.88-hw,h*0.1,hw,h*0.5,o.n,o.ih); }},
+        if(o.dw) dishwasher(c,w*0.14+sw+40,h*0.1,Math.min(450,w*0.14),h*0.5); const hw=hobW(o,w*0.28); hob(c,w*0.88-hw,h*0.1,hw,h*0.5,o.n,o.ih,true); }},
     {id:'mini',name:'ミニキッチン',w:1200,h:600,opts:true,presets:[[900,550],[1050,600],[1200,600]],
       draw(c,w,h,f){ const o=kopt(f,1); box(c,0,0,w,h,{fill:'top'}); sink(c,w*0.08,h*0.22,w*0.44,h*0.6); hob(c,w*0.6,h*0.16,w*0.32,h*0.68,o.n,o.ih); }}]},
   fridge:{name:'冷蔵庫',cat:'kitchen',legacy:'one',vars:[
