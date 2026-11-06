@@ -81,6 +81,7 @@
 - 2本指の操作（2026-10-23）：2本目の指が触れたら、1本目で始めた操作を取り消し（`lastSnap` と違えば `applySnap` で戻す）、指の中心の移動で画面移動・指の間隔で拡大縮小（`pinch`）。1本離したら残りの指で `pan` を続ける。iPhone の Safari がページの拡大・スクロールに使わないよう、キャンバスの `touchstart/touchmove` と `gesture*` を `preventDefault`。`lostpointercapture` で取り残された指を片付ける
 - 画面移動（パソコン）：どのツールでも右ボタンのドラッグ（`e.button===2`）、ホイールボタンのドラッグ、Space＋ドラッグで `pan`。右クリックのメニューは `contextmenu` で抑止済み。移動中のカーソルは grabbing、終わったら `toolCursor(tool)` に戻す
 - 書き出し範囲（2026-10-23）：「JPEG書き出し」でメニュー `#exportMenu`（ヘッダーは横スクロールするので body 直下の fixed）。図面全体（`bbox()`＋余白 1.5×455mm）／今見えている範囲（`view` と画面サイズ）／ドラッグで指定（`exportPick` 中は左ドラッグが `exportRect`、外側を暗くして寸法を表示、200mm 未満は無視、Esc で中止）。`exportImgBlob(cb, rect)` は rect（mm）を受け取り、解像度は常に 455mm=96px
+  - 保存先の選択（2026-11-06）：`saveJpeg(rect)` は Chrome / Edge（`FS_API`）なら先に `showSaveFilePicker`（`id:'madori-jpeg'` で前回のフォルダを覚える）を出してから画像を作って書き込む（クリック直後でないと保存画面を出せないため順番が逆）。ほかのブラウザはダウンロード。名前の初期値は `jpegName()`＝今の図面のファイル名の .json を .jpg に（無ければ `madori-日付.jpg`）。キャンセルは何もしない
 - 範囲選択（2026-10-24）：選択ツールで何もない所からドラッグ（`marquee`、4px 以上動いたら）すると、四角に**丸ごと入っている**設備・文字・寸法線・壁/建具の線分と、ラベル位置が入っている部屋設定を `multi` に入れる（`selectInRect`）。動かさずに離せば従来どおり部屋の選択
   - `multi = {fix, text, dim, room, segPts}`。線分は中点 `segPts` で持ち `multiSegs()` で引き直す。`visKind()` は 'multi' を最優先。浮かぶボタンは複製・削除、選択欄 `#multiSel` に内訳
   - 囲みの中をドラッグで `moveMulti`：移動量は `gridDelta()` で決める。動かす壁の端点（中心線）がいちばん多くグリッドに乗る量を選ぶので、元がグリッドからずれた壁も移動でグリッドに戻る（壁が無ければグリッド幅ごと、自由配置なら 1mm）。ドラッグ中は壁を重ねたまま仮表示し、確定時に `placeSegs()`（`replaceRange` で厚さを保って置き直し、建具はあとから重ねる）で既存の壁との重なりを処理

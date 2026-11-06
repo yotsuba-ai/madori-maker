@@ -1757,7 +1757,16 @@ function exportImgBlob(cb,rect){
   drawScene(c,ez,rect.x1,rect.y1,{w,h,bg:'#FFFFFF',grid:false,ui:false});
   oc.toBlob(cb,'image/jpeg',0.92);   // JPEG（白背景なので透過は不要）
 }
-const saveJpeg=rect=>exportImgBlob(bl=>dl(URL.createObjectURL(bl),'madori-'+stamp()+'.jpg'),rect);
+// JPEG の保存：Chrome / Edge は保存先と名前を選ぶ画面を先に出し（クリック直後でないと出せないため）、そのあと画像を作って書き込む。
+// ほかのブラウザはダウンロード（保存先はブラウザの設定に従う）。名前の初期値は今の図面のファイル名（無ければ日付）
+const jpegName=()=>fileCur.name?fileCur.name.replace(/\.json$/i,'')+'.jpg':'madori-'+stamp()+'.jpg';
+async function saveJpeg(rect){
+  if(!rect&&!bbox()){ alert('まだ何も描かれていません'); return; }
+  const name=jpegName();
+  if(!FS_API){ exportImgBlob(bl=>{ const url=URL.createObjectURL(bl); dl(url,name); setTimeout(()=>URL.revokeObjectURL(url),10000); setStatus('「'+name+'」をダウンロードしました（保存先を毎回選ぶには、ブラウザの設定で「ダウンロード前に保存場所を確認する」をオンにしてください）'); },rect); return; }
+  let h; try{ h=await window.showSaveFilePicker({suggestedName:name,types:[{description:'JPEG 画像',accept:{'image/jpeg':['.jpg','.jpeg']}}],id:'madori-jpeg'}); }
+  catch(e){ if(!isAbort(e)) alert('書き出せませんでした'); return; }
+  exportImgBlob(async bl=>{ try{ const w=await h.createWritable(); await w.write(bl); await w.close(); setStatus('「'+h.name+'」に書き出しました'); }catch(e){ alert('書き出せませんでした'); } },rect); }
 // 書き出し範囲のメニュー（ヘッダーは横スクロールするので、メニューは body 直下に fixed で出す）
 let exportPick=false;
 function closeExportMenu(){ $('#exportMenu').style.display='none'; }
