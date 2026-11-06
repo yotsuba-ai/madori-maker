@@ -232,6 +232,12 @@ kbd{font:11px ui-monospace,monospace;background:#F0F2F5;border:1px solid var(--l
       <div class="seg" id="textDirNew"><button data-vert="0">横書き</button><button data-vert="1">縦書き</button></div>
       <h3>大きさ（新しく置く文字）</h3>
       <div class="tsize"><input type="range" id="textSizeR" min="100" max="2000" step="10"><input type="number" id="textSize" min="100" max="2000" step="10"> mm</div>
+      <h3>字体（新しく置く文字）</h3>
+      <label class="row"><select id="textFontNew"></select></label>
+      <label class="row"><span><input type="checkbox" id="textBoldNew"> 太字</span></label>
+      <h3>置き方</h3>
+      <label class="row"><span><input type="checkbox" id="textSnap"> グリッドに合わせる</span></label>
+      <p class="hint">オフのときは好きな位置に置けます（1mm 単位）。<kbd>Alt</kbd> を押している間は一時的に逆になります。選んだ文字は矢印キーで 10mm（<kbd>Shift</kbd> で 100mm）ずつ動かせます。</p>
       <p class="hint">クリックで文字を置き、下の欄で内容を打ち込みます。置いた文字はクリックで選択、ドラッグで移動できます。<br>大きさは文字の高さ（図面上の mm）です。選んだ文字は、右下の四角いつまみを引っ張っても大きさを変えられます。</p>
     </section>
 
@@ -302,6 +308,8 @@ kbd{font:11px ui-monospace,monospace;background:#F0F2F5;border:1px solid var(--l
         <label class="row">内容 <input type="text" id="textInput" placeholder="例：バルコニー"></label>
         <div class="seg" id="textDirSel"><button data-vert="0">横書き</button><button data-vert="1">縦書き</button></div>
         <div class="tsize">大きさ <input type="range" id="selTextSizeR" min="100" max="2000" step="10"><input type="number" id="selTextSize" min="100" max="2000" step="10"> mm</div>
+        <label class="row">字体 <select id="textFontSel"></select></label>
+        <label class="row"><span><input type="checkbox" id="textBoldSel"> 太字</span></label>
         <h3>重なり順</h3>
         <div class="seg"><button data-z="back">最背面</button><button data-z="down">背面へ</button><button data-z="up">前面へ</button><button data-z="front">最前面</button></div>
         <p class="hint">文字どうしの順番です。文字は設備や壁より常に前に出ます。</p>
@@ -396,7 +404,7 @@ const OPEN = {
 const openPanels=o=>{ const d=OPEN[o.t]; return (o.n&&d&&d.panels&&d.panels.includes(o.n))?o.n:(d&&d.panels?d.panels[0]:1); };
 const openPref={};   // 型ごとに、最後に選んだ枚数（次に置くときに使う）
 // 出窓の形 bs（無し＝台形）と出幅 bd（mm、無し＝450）。選んだ値は bayPref に覚えて次に置く出窓に使う
-const BAY_SHAPES=[['trap','台形'],['rect','角形'],['tri','三角'],['arc','弓形']], BAY_DEPTHS=[300,450,600], BAY_D0=450;
+const BAY_SHAPES=[['trap','台形'],['rect','角形'],['tri','三角'],['arc','弓形'],['corner','コーナー']], BAY_DEPTHS=[300,450,600], BAY_D0=450;
 const bayPref={};
 const newOpening=(t,f)=>{ const o={t,f:f||0}; if(openPref[t]) o.n=openPref[t]; if(t==='bay') Object.assign(o,bayPref); return o; };
 // ===== 設備・家具 =====
@@ -685,14 +693,21 @@ function northMark(c,w,h,withN){ const r=Math.min(w,h)/2, cx=w/2, cy=h/2, t=with
 const FIX_CATS=[['water','水回り'],['kitchen','キッチン'],['store','玄関・収納'],['stairs','階段'],['furn','家具'],['struct','柱'],['other','その他']];
 const FIX_ALIAS={stairsU:['stairs','U'],stairsL:['stairs','L']};   // 旧版の型 id → [型, パターン]
 const FONT = '"Hiragino Sans","Noto Sans JP","Yu Gothic UI",sans-serif';
+// 文字の字体（文字ごとの font。無し＝標準）。端末に入っているフォントを使う。丸ゴシックの無い端末（Windows で Office 無し など）は標準のゴシックで表示される
+const TEXT_FONTS=[['','標準（ゴシック）',FONT],
+  ['mincho','明朝','"Hiragino Mincho ProN","Yu Mincho","YuMincho","Noto Serif JP","MS PMincho",serif'],
+  ['maru','丸ゴシック','"Hiragino Maru Gothic ProN","Hiragino Maru Gothic Pro","HG丸ｺﾞｼｯｸM-PRO","M PLUS Rounded 1c","Zen Maru Gothic",'+FONT],
+  ['ud','UDゴシック','"BIZ UDPGothic","BIZ UDゴシック","Hiragino Sans","Noto Sans JP",'+FONT]];
+const fontFamily=t=>(TEXT_FONTS.find(f=>f[0]===(t.font||''))||TEXT_FONTS[0])[2];
+const textFont=(t,px)=>(t.bold?'700 ':'')+px+'px '+fontFamily(t);
 
 // ===== 状態 =====
 // walls: 任意方向の線分 {x1,y1,x2,y2,o}（正規化済み：x が増える向き、x が同じなら y が増える向き）
 //   o = null は普通の壁、{t:OPEN の id, f:向き} は建具
 // fixtures: {type,v,x,y,rot,mir,w,h}（v はパターン id、w,h が無ければパターンの標準サイズ）
 // dims: 寸法線 {x1,y1,x2,y2}
-const state = {walls:[], texts:[], fixtures:[], rooms:[], dims:[], thick:'normal', joMode:'module', grid:455, angle:'ortho', dimUnit:'mm', fixStyle:'color', freePlace:false, areaMode:'jo'};
-let tool='wall', doorSub='door', winSub='window', fixType='kitchen', textSize=410, textVert=false;
+const state = {walls:[], texts:[], fixtures:[], rooms:[], dims:[], thick:'normal', joMode:'module', grid:455, angle:'ortho', dimUnit:'mm', fixStyle:'color', freePlace:false, textSnap:false, areaMode:'jo'};
+let tool='wall', doorSub='door', winSub='window', fixType='kitchen', textSize=410, textVert=false, textFontNew='', textBoldNew=false;
 const fixVarSel={};               // 型ごとに、次に置くパターンの id
 let selRoom=null, selFix=null, selText=null, selOpenPt=null, selWallPt=null, selDim=null;   // selOpenPt / selWallPt: 選択中の建具・壁の中点 mm（線分は normalize で作り直されるので点で持つ）
 let view={x:0,y:0,z:24/MOD};      // x,y = 画面左上のワールド座標（mm）、z = px/mm
@@ -759,7 +774,17 @@ function setWallThick(seg,th){ if(seg.th===th) return false; seg.th=th; normaliz
 function segDist(s,w){ const dx=s.x2-s.x1, dy=s.y2-s.y1, l2=dx*dx+dy*dy; const t=l2?clamp(((w[0]-s.x1)*dx+(w[1]-s.y1)*dy)/l2,0,1):0; return Math.hypot(w[0]-(s.x1+t*dx),w[1]-(s.y1+t*dy)); }
 // 同じ距離なら建具（ドア・窓）を優先する。建具の端をクリックしたときに隣の壁が選ばれないようにするため
 function nearestSeg(w,tol){ tol=tol??10/view.z; let best=null,bd=tol; for(const s of state.walls){const d=segDist(s,w); if(d<bd||(d===bd&&s.o&&!(best&&best.o))){bd=d;best=s;}} return best; }
-function cycleFlip(s){ const d=OPEN[s.o.t]||{flips:1}, f=s.o.f||0; s.o={...s.o,f:d.side?f^2:(f+1)%d.flips}; normalize(); regions=null; }
+const isCornerBay=o=>!!o&&o.t==='bay'&&o.bs==='corner';
+function cycleFlip(s){ const d=OPEN[s.o.t]||{flips:1}, f=s.o.f||0; s.o={...s.o,f:isCornerBay(s.o)?(f+1)%4:d.side?f^2:(f+1)%d.flips}; normalize(); regions=null; }
+// コーナー出窓の向き：建具の端に、別の向きの線分の端が接していれば、そちらを角とみなす（bit0：0＝終点側 x2,y2 / 1＝始点側）。
+// 外の向き（bit1）は、接している壁が伸びていくのと反対側。見つからなければ今の f のまま
+function cornerFlip(seg){ const L=lineOf(seg), ny=[-L.uy,L.ux];
+  for(const [bit0,ex,ey] of [[0,seg.x2,seg.y2],[1,seg.x1,seg.y1]]){
+    for(const w of state.walls){ if(w===seg) continue; const M=lineOf(w); if(Math.abs(M.ux*L.uy-M.uy*L.ux)<0.2) continue;
+      let q=null; if(Math.hypot(w.x1-ex,w.y1-ey)<1) q=[w.x2,w.y2]; else if(Math.hypot(w.x2-ex,w.y2-ey)<1) q=[w.x1,w.y1]; if(!q) continue;
+      const dot=(q[0]-ex)*ny[0]+(q[1]-ey)*ny[1]; return bit0|(dot>0?2:0); } }
+  return seg.o.f||0; }
+function fixCornerFlip(s){ if(s&&isCornerBay(s.o)){ s.o={...s.o,f:cornerFlip(s)}; normalize(); regions=null; } }
 // 建具の向きを、区間の両端に接する同種の建具から引き継ぐ
 function inheritFlip(L,from,to,t){ for(const s of state.walls){ if(!s.o||s.o.t!==t||!onLine(s,L)) continue; const a=along(L,[s.x1,s.y1]), b=along(L,[s.x2,s.y2]); if(Math.abs(b-from)<0.05||Math.abs(a-to)<0.05) return s.o.f||0; } return 0; }
 const midOf=s=>[(s.x1+s.x2)/2,(s.y1+s.y2)/2];
@@ -786,7 +811,7 @@ function multiCount(){ return multi?multi.fix.length+multi.text.length+multi.dim
 // 縦書き（t.vert）：x, y は 1 列の左上。1 文字ずつ下へ並べる
 const V_STEP=1.05, V_ROT=new Set([...'ー—―–‐-−〜～…‥（）()「」『』【】〈〉《》［］[]｛｝{}＝=→←_＿：:']), V_PUNCT=new Set([...'、。，．,.']), V_SMALL=new Set([...'ぁぃぅぇぉっゃゅょゎァィゥェォッャュョヮ']);
 function textBox(t){ if(t.vert) return [t.x,t.y,t.x+t.size,t.y+t.size*V_STEP*Math.max(1,Array.from(t.text).length)];
-  ctx.font=`${t.size*view.z}px ${FONT}`; return [t.x,t.y,t.x+ctx.measureText(t.text).width/view.z,t.y+t.size*1.2]; }
+  ctx.font=textFont(t,t.size*view.z); return [t.x,t.y,t.x+ctx.measureText(t.text).width/view.z,t.y+t.size*1.2]; }
 function drawVText(c,text,x,y,px){ c.save(); c.textAlign='center'; c.textBaseline='middle'; const cx=x+px/2;
   Array.from(text).forEach((ch,i)=>{ const cy=y+px*V_STEP*(i+0.5);
     if(V_ROT.has(ch)){ c.save(); c.translate(cx,cy); c.rotate(Math.PI/2); c.fillText(ch,0,0); c.restore(); }   // 長音・かっこなどは 90 度回す
@@ -867,7 +892,7 @@ function applySnap(s){ applyDoc(JSON.parse(s)); }
 function commit(){ hist.push(lastSnap); if(hist.length>100) hist.shift(); redo.length=0; lastSnap=snap(); regions=null; save(); render(); }
 function undo(){ if(!hist.length) return; redo.push(snap()); applySnap(hist.pop()); lastSnap=snap(); save(); updatePanels(); render(); }
 function redoFn(){ if(!redo.length) return; hist.push(snap()); applySnap(redo.pop()); lastSnap=snap(); save(); updatePanels(); render(); }
-function fullDoc(){ return {v:2,grid:state.grid,angle:state.angle,thick:state.thick,joMode:state.joMode,dimUnit:state.dimUnit,fixStyle:state.fixStyle,freePlace:state.freePlace,areaMode:state.areaMode,...JSON.parse(snap())}; }
+function fullDoc(){ return {v:2,grid:state.grid,angle:state.angle,thick:state.thick,joMode:state.joMode,dimUnit:state.dimUnit,fixStyle:state.fixStyle,freePlace:state.freePlace,textSnap:state.textSnap,areaMode:state.areaMode,...JSON.parse(snap())}; }
 let mem=null;
 // 読込・保存したファイル。handle は File System Access API（Chrome / Edge）で開いたときだけ持ち、上書き保存に使う。saved は最後に読込・保存した時点の内容
 let fileCur={handle:null,name:null,saved:null};
@@ -893,7 +918,7 @@ function applyDoc(o){
   state.fixtures=(o.fixtures||[]).map(f=>FIX_ALIAS[f.type]?{...f,type:FIX_ALIAS[f.type][0],v:FIX_ALIAS[f.type][1]}:f).filter(f=>FIX[f.type]);
   regions=null; clearSel();
 }
-function applySettings(o){ if(['jo','m2','both','none'].includes(o.areaMode)) state.areaMode=o.areaMode; if(o.thick&&THICK[o.thick]) state.thick=o.thick; if(o.joMode) state.joMode=o.joMode; if(o.grid) state.grid=clampGrid(o.grid); if(o.angle&&ANGLE_MODES[o.angle]) state.angle=o.angle; if(o.dimUnit==='m'||o.dimUnit==='mm') state.dimUnit=o.dimUnit; if(FIXCOL[o.fixStyle]) state.fixStyle=o.fixStyle; if(typeof o.freePlace==='boolean') state.freePlace=o.freePlace; }
+function applySettings(o){ if(['jo','m2','both','none'].includes(o.areaMode)) state.areaMode=o.areaMode; if(o.thick&&THICK[o.thick]) state.thick=o.thick; if(o.joMode) state.joMode=o.joMode; if(o.grid) state.grid=clampGrid(o.grid); if(o.angle&&ANGLE_MODES[o.angle]) state.angle=o.angle; if(o.dimUnit==='m'||o.dimUnit==='mm') state.dimUnit=o.dimUnit; if(FIXCOL[o.fixStyle]) state.fixStyle=o.fixStyle; if(typeof o.freePlace==='boolean') state.freePlace=o.freePlace; if(typeof o.textSnap==='boolean') state.textSnap=o.textSnap; }
 function load(){
   let s=null; try{ s=localStorage.getItem(STORE_KEY)||localStorage.getItem(STORE_KEY_V1); }catch(e){ s=mem; }
   if(!s) return;
@@ -1055,19 +1080,24 @@ function drawOpening(c,z,t,L,o,bg){
     case 'fix': frame(); c.lineWidth=lw*1.3; LN(c,0,0,L,0); outside(); break;
     case 'casement': frame(); c.lineWidth=lw; LN(c,0,0,L,0); leaf(hx,L*0.8,ux,ny,ny*g,Math.max(1.5,pt*0.6)); outside(); break;
     case 'bay': { // 出窓：壁の外へ出た窓台の外形 pts（壁の面 y0 から外向き s）。窓台は背景で塗り、外形に沿った内側の帯をガラス面にする
-      const y0=s*t/2, d=Math.min((o.bd||BAY_D0)*z, Math.max(L*0.9,t)), sh=o.bs||'trap'; let pts;
-      if(sh==='rect') pts=[[0,0],[0,d],[L,d],[L,0]];
+      const y0=s*t/2, d=Math.min((o.bd||BAY_D0)*z, Math.max(L*0.9,t)), sh=o.bs||'trap'; let pts, back=[];
+      // コーナー出窓：角（x=L 側。bit0 なら左右反転）で、もう一方の壁（外側の面 x=L+t/2、壁厚は同じとみなす）にも同じ長さだけ回り込む。
+      // 壁の角の正方形は、建具の背景塗りで半分消えるので塗り直す
+      c.save(); if(sh==='corner'&&(f&1)){ c.translate(L,0); c.scale(-1,1); }
+      if(sh==='corner'){ c.fillStyle=INK; c.fillRect(L-t/2-0.6,-t/2-0.6,t/2+1.2,t+1.2); const X=L+t/2, leg=L+t/2; pts=[[0,0],[0,d],[X+d,d],[X+d,-leg],[X,-leg]]; back=[[X,0]]; }
+      else if(sh==='rect') pts=[[0,0],[0,d],[L,d],[L,0]];
       else if(sh==='tri') pts=[[0,0],[L/2,d],[L,0]];
       else if(sh==='arc'){ pts=[]; for(let i=0;i<=24;i++){ const a=Math.PI*i/24; pts.push([L/2-L/2*Math.cos(a), d*Math.sin(a)]); } }
       else { const e=Math.min(d*0.6,L*0.25); pts=[[0,0],[e,d],[L-e,d],[L,0]]; }
-      pts=pts.map(([x,y])=>[x,y0+s*y]);
-      const path=()=>{ c.beginPath(); pts.forEach(([x,y],i)=>i?c.lineTo(x,y):c.moveTo(x,y)); };
-      path(); c.closePath(); c.fillStyle=bg; c.fill();
+      const map=([x,y])=>[x,y0+s*y]; pts=pts.map(map); back=back.map(map);
+      const path=()=>{ c.beginPath(); pts.forEach(([x,y],i)=>i?c.lineTo(x,y):c.moveTo(x,y)); }, area=()=>{ path(); back.forEach(([x,y])=>c.lineTo(x,y)); c.closePath(); };
+      area(); c.fillStyle=bg; c.fill();
       const gw=Math.max(2,Math.min(d*0.22,t*0.8));
-      c.save(); path(); c.closePath(); c.clip(); c.lineJoin='miter';
+      c.save(); area(); c.clip(); c.lineJoin='miter';
       path(); c.lineWidth=2*gw+lwT*2; c.strokeStyle=INK; c.stroke(); path(); c.lineWidth=2*gw; c.strokeStyle=GLASS; c.stroke(); c.restore();
       c.lineJoin='miter'; path(); c.lineWidth=lw; c.strokeStyle=INK; c.stroke();
-      c.lineWidth=lwT; LN(c,0,y0,L,y0); break; }
+      c.lineWidth=lwT; if(sh==='corner'){ const [lx,ly]=pts[pts.length-1]; LN(c,0,y0,lx,y0); LN(c,lx,y0,lx,ly); } else LN(c,0,y0,L,y0);
+      c.restore(); break; }
     case 'small': frame(); c.lineWidth=lw; c.setLineDash(dash); LN(c,0,0,L,0); c.setLineDash([]); outside(); break;
     default: c.lineWidth=lw; LN(c,0,0,L,0);
   }
@@ -1123,7 +1153,7 @@ function drawScene(c,z,ox,oy,opt){
   if(opt.ui&&tool==='select'){ for(const r of areaRegions()){ const pth=regionPath(r,S); c.fillStyle='rgba(43,76,126,.13)'; c.fill(pth,'evenodd'); c.strokeStyle='#2B4C7E'; c.lineWidth=2; c.setLineDash([5,4]); c.stroke(pth); c.setLineDash([]); } }
   // 文字
   c.textAlign='left'; c.textBaseline='top';
-  for(const tx of state.texts){ const [sx,sy]=S(tx.x,tx.y); c.font=`${tx.size*z}px ${FONT}`; c.fillStyle='#1B2433'; if(tx.vert) drawVText(c,tx.text,sx,sy,tx.size*z); else c.fillText(tx.text,sx,sy);
+  for(const tx of state.texts){ const [sx,sy]=S(tx.x,tx.y); c.font=textFont(tx,tx.size*z); c.fillStyle='#1B2433'; if(tx.vert) drawVText(c,tx.text,sx,sy,tx.size*z); else c.fillText(tx.text,sx,sy);
     if(tx===selText&&opt.ui){ const b=textBox(tx); c.strokeStyle='#2B4C7E'; c.setLineDash([4,3]); c.lineWidth=1; c.strokeRect(sx-3,sy-2,(b[2]-b[0])*z+6,(b[3]-b[1])*z+4); c.setLineDash([]); } }
 }
 // 寸法線：両端に短い斜線、中央に長さ。文字が逆さまにならないよう向きを補正
@@ -1201,6 +1231,8 @@ const alongSnap=(L,t)=>L.a+Math.round((t-L.a)/state.grid)*state.grid;
 // 設備・建具の移動とサイズ変更の吸着。自由配置（または Alt で反転）なら 1mm 単位
 let altDown=false, shiftDown=false;
 const isFree=()=>state.freePlace!==altDown;
+// 文字の位置：既定は 1mm 単位の自由配置。「グリッドに合わせる」（state.textSnap）で吸着、Alt で一時的に逆
+const textSnapV=v=>(state.textSnap!==altDown)?snapV(v):Math.round(v);
 const objSnap=v=>isFree()?Math.round(v):snapV(v);
 // 選択中の設備・建具のつまみ（サイズ変更用）。設備は四隅と辺の中点、建具は両端
 function selHandles(){ const k=visKind();
@@ -1312,7 +1344,7 @@ cv.addEventListener('pointermove',e=>{
     case 'wall': { if(Math.hypot(e.offsetX-drag.sx,e.offsetY-drag.sy)>6) drag.moved=true; if(!drag.moved) break; const q=snapDraw(w), b=constrainEnd(drag.a,q); preview={kind:'wall',ax:drag.a[0],ay:drag.a[1],bx:b[0],by:b[1],k:q.k&&b[0]===q[0]&&b[1]===q[1]}; break; }
     case 'dim': { if(Math.hypot(e.offsetX-drag.sx,e.offsetY-drag.sy)>6) drag.moved=true; if(!drag.moved) break; const b=straightEnd(drag.a,snapDraw(w)); preview={kind:'dim',ax:drag.a[0],ay:drag.a[1],bx:b[0],by:b[1]}; break; }
     case 'erase': case 'open': { const t=along(drag.L,w); if(alongSnap(drag.L,t)!==drag.s0&&Math.abs(t-drag.p0)>4/view.z) drag.moved=true; preview={kind:drag.mode,...dragRange(drag,w)}; break; }
-    case 'moveText': { const nx=snapV(w[0]-drag.ox), ny=snapV(w[1]-drag.oy); if(nx!==drag.t.x||ny!==drag.t.y){drag.t.x=nx;drag.t.y=ny;drag.moved=true;} break; }
+    case 'moveText': { const nx=textSnapV(w[0]-drag.ox), ny=textSnapV(w[1]-drag.oy); if(nx!==drag.t.x||ny!==drag.t.y){drag.t.x=nx;drag.t.y=ny;drag.moved=true;} break; }
     case 'resizeText': { const d=drag, t=d.t, dx=w[0]-t.x, dy=w[1]-t.y, k=(dx*d.bw+dy*d.bh)/(d.bw*d.bw+d.bh*d.bh);   // 対角線方向に引いた割合で拡大縮小
       t.size=textSize=tsClamp(d.s0*k); d.moved=true; syncTextSize(); break; }
     case 'resizeFix': { const d=drag, f=d.f, [x1,y1,x2,y2]=d.box0, MIN=100, px=objSnap(w[0]), py=objSnap(w[1]); let nx1=x1,ny1=y1,nx2=x2,ny2=y2;
@@ -1336,12 +1368,12 @@ function endPointer(e){
     case 'wall': { const e2=snapDraw(w); if(!d.moved||(e2[0]===d.a[0]&&e2[1]===d.a[1])){ const seg=nearestSeg(w); if(seg&&setWallThick(seg,state.thick)) commit(); } else if(addWallLine(d.a,e2)) commit(); break; }
     case 'dim': { const b=straightEnd(d.a,snapDraw(w)); if(d.moved&&Math.hypot(b[0]-d.a[0],b[1]-d.a[1])>=0.5){ state.dims.push({x1:d.a[0],y1:d.a[1],x2:b[0],y2:b[1]}); commit(); } break; }
     case 'erase': { const r=dragRange(d,w); const restore=!d.moved&&d.seg.o; if(replaceRange(r.L,r.from,r.to,restore?null:REMOVE)) commit(); break; }
-    case 'open': { const r=dragRange(d,w); const f=inheritFlip(r.L,r.from,r.to,d.sub); if(replaceRange(r.L,r.from,r.to,newOpening(d.sub,f))){ const [x,y]=P(r.L,(r.from+r.to)/2); selOpenPt=[x,y]; commit(); } updateOpenPanel(); break; }
+    case 'open': { const r=dragRange(d,w); const f=inheritFlip(r.L,r.from,r.to,d.sub); if(replaceRange(r.L,r.from,r.to,newOpening(d.sub,f))){ const [x,y]=P(r.L,(r.from+r.to)/2); selOpenPt=[x,y]; fixCornerFlip(selOpen()); commit(); } updateOpenPanel(); break; }
     case 'none': if(d.changed) commit(); updatePanels(); break;
     case 'room': if(d.moved){ const [x1,x2]=[Math.min(d.a[0],d.b[0]),Math.max(d.a[0],d.b[0])], [y1,y2]=[Math.min(d.a[1],d.b[1]),Math.max(d.a[1],d.b[1])];
         if(!addManualRoom([[x1,y1],[x2,y1],[x2,y2],[x1,y2]])) setStatus('四角が小さすぎます'); }
       else { selectRoomAt(d.w); if(selRoom) setPanelHidden(false); } break;
-    case 'newText': { const t={x:snapV(d.w[0]),y:snapV(d.w[1]),text:'文字',size:textSize}; if(textVert) t.vert=true; state.texts.push(t); selText=t; commit(); updateTextPanel(); setPanelHidden(false); const inp=$('#textInput'); inp.focus(); inp.select(); break; }
+    case 'newText': { const t={x:textSnapV(d.w[0]),y:textSnapV(d.w[1]),text:'文字',size:textSize}; if(textVert) t.vert=true; if(textFontNew) t.font=textFontNew; if(textBoldNew) t.bold=true; state.texts.push(t); selText=t; commit(); updateTextPanel(); setPanelHidden(false); const inp=$('#textInput'); inp.focus(); inp.select(); break; }
     case 'moveText': if(d.moved) commit(); else if(tool==='text'){ setPanelHidden(false); $('#textInput').focus(); $('#textInput').select(); } break;
     case 'newFix': { const vs=FIX[fixType].vars, v=vs.find(x=>x.id===fixVarSel[fixType])||vs[0]; const f={type:fixType,v:v.id,x:FIX[fixType].center?objSnap(d.w[0])-v.w/2:objSnap(d.w[0]-v.w/2),y:FIX[fixType].center?objSnap(d.w[1])-v.h/2:objSnap(d.w[1]-v.h/2),rot:0,w:v.w,h:v.h}; state.fixtures.push(f); selFix=f; updateFixPanel(); commit(); break; }
     case 'moveFix': if(d.moved) commit(); break;
@@ -1384,6 +1416,8 @@ window.addEventListener('keydown',e=>{
   if((e.key==='m'||e.key==='M')&&visKind()==='fix') doAction('mir');
   { const za={']':'up','[':'down','}':'front','{':'back'}[e.key]; if(za) doAction(za); }
   if(e.key==='Delete'||e.key==='Backspace'){ e.preventDefault(); deleteSel(); }
+  // 選択中の文字を矢印キーで 10mm（Shift で 100mm）ずつ動かす
+  { const ar={ArrowLeft:[-1,0],ArrowRight:[1,0],ArrowUp:[0,-1],ArrowDown:[0,1]}[e.key]; if(ar&&visKind()==='text'&&selText){ e.preventDefault(); const st=e.shiftKey?100:10; selText.x+=ar[0]*st; selText.y+=ar[1]*st; commit(); } }
 });
 window.addEventListener('keyup',e=>{if(e.code==='Space')space=false;});
 
@@ -1422,7 +1456,16 @@ function setTextVert(v){ textVert=v; if(selText&&!!selText.vert!==v){ if(v) selT
 $('#textDirNew').querySelectorAll('button').forEach(b=>{ b.onclick=()=>{ textVert=b.dataset.vert==='1'; syncTextDir(); b.blur(); }; });
 $('#textDirSel').querySelectorAll('button').forEach(b=>{ b.onclick=()=>{ setTextVert(b.dataset.vert==='1'); b.blur(); }; });
 syncTextDir();
-function updateTextPanel(){ const t=selText&&state.texts.includes(selText)?selText:null; if(!t) selText=null; $('#textSel').style.display=(t&&(tool==='text'||tool==='select'))?'':'none'; syncTextDir(); if(!t) return; if(document.activeElement!==$('#textInput')) $('#textInput').value=t.text; syncTextSize(); }
+for(const id of ['#textFontNew','#textFontSel']) for(const [v,name,fam] of TEXT_FONTS){ const op=document.createElement('option'); op.value=v; op.textContent=name; op.style.fontFamily=fam; $(id).appendChild(op); }
+function syncTextFont(){ $('#textFontNew').value=textFontNew; $('#textBoldNew').checked=textBoldNew; const t=selText; if(t){ $('#textFontSel').value=t.font||''; $('#textBoldSel').checked=!!t.bold; } }
+// 選んだ文字の字体を変えると、次に置く文字の既定にもする（書く向きと同じ）
+function setTextFont(font,bold){ textFontNew=font; textBoldNew=bold; if(selText){ if(font) selText.font=font; else delete selText.font; if(bold) selText.bold=true; else delete selText.bold; commit(); } syncTextFont(); render(); }
+$('#textFontNew').onchange=e=>{ textFontNew=e.target.value; e.target.blur(); };
+$('#textBoldNew').onchange=e=>{ textBoldNew=e.target.checked; e.target.blur(); };
+$('#textFontSel').onchange=e=>{ setTextFont(e.target.value,$('#textBoldSel').checked); e.target.blur(); };
+$('#textBoldSel').onchange=e=>{ setTextFont($('#textFontSel').value,e.target.checked); e.target.blur(); };
+$('#textSnap').onchange=e=>{ state.textSnap=e.target.checked; save(); e.target.blur(); };
+function updateTextPanel(){ const t=selText&&state.texts.includes(selText)?selText:null; if(!t) selText=null; $('#textSel').style.display=(t&&(tool==='text'||tool==='select'))?'':'none'; syncTextDir(); syncTextFont(); if(!t) return; if(document.activeElement!==$('#textInput')) $('#textInput').value=t.text; syncTextSize(); }
 $('#textInput').oninput=e=>{ if(selText){ selText.text=e.target.value; render(); } };
 $('#textInput').onchange=e=>{ if(!selText) return; if(!e.target.value.trim()){ e.target.value=selText.text||'文字'; selText.text=e.target.value; } commit(); };
 $('#textInput').onkeydown=e=>{ if(e.key==='Enter'||e.key==='Escape'){ e.target.blur(); } };
@@ -1432,6 +1475,7 @@ $('#textDel').onclick=()=>{ if(!selText) return; state.texts.splice(state.texts.
 // チップの小さな記号図：短い壁の間に建具を 1 つ描く
 function openIcon(id,ex){ const W=46,H=36,d=window.devicePixelRatio||1, cv=document.createElement('canvas'); cv.width=W*d; cv.height=H*d; cv.style.width=W+'px'; cv.style.height=H+'px';
   const c=cv.getContext('2d'); c.scale(d,d); const z=0.03, t=5, L=id==='slide1'?19:24, x0=id==='slide1'?3:(W-L)/2, y=7;   // 片引き戸は右に収まる位置まで入るよう左へ寄せる
+  if(ex&&ex.bs==='corner'){ const L2=16, xa=9, ya=19; c.fillStyle=INK; c.fillRect(0,ya-t/2,xa,t); c.fillRect(xa+L2-t/2,0,t,ya+t/2); c.save(); c.translate(xa,ya); drawOpening(c,z,t,L2,{t:id,f:0,...ex,bd:300},'#fff'); c.restore(); return cv; }
   c.fillStyle=INK; c.fillRect(0,y-t/2,x0,t); c.fillRect(x0+L,y-t/2,W-x0-L,t); c.save(); c.translate(x0,y); drawOpening(c,z,t,L,{t:id,f:0,...ex},'#fff'); c.restore(); return cv; }
 function makeTypeChips(el,kind,get,set){ el.innerHTML=''; for(const id in OPEN){ if(OPEN[id].kind!==kind) continue; const b=document.createElement('button'); b.appendChild(openIcon(id)); const sp=document.createElement('span'); sp.textContent=OPEN[id].name; b.appendChild(sp); b.dataset.id=id; b.classList.toggle('on',get()===id);
   b.onclick=()=>{ set(id); [...el.children].forEach(x=>x.classList.toggle('on',x===b)); setStatus(hintOf(tool)); }; el.appendChild(b); } }
@@ -1452,7 +1496,7 @@ function updateOpenPanel(){ const s=(tool==='door'||tool==='window'||tool==='sel
   const ops=o.opts||[]; $('#openShRow').style.display=ops.includes('sh')?'':'none'; $('#openGrRow').style.display=ops.includes('gr')?'':'none'; $('#openSh').checked=!!s.o.sh; $('#openGr').checked=!!s.o.gr; $('#openW').value=Math.round(lineOf(s).len/10)*10; $('#openFlip').disabled=o.flips<2; }
 $('#openW').onchange=e=>{ const w=clamp(Math.round((+e.target.value||0)/10)*10,200,6000); setOpeningWidth(w); e.target.blur(); };
 // 選択中の建具の枚数・オプションを変える（枚数は次に置くときの標準にもする）
-function setOpenOpt(ch){ const s=selOpen(); if(!s) return; const o={...s.o,...ch}; for(const k of ['sh','gr','bs','bd']) if(!o[k]) delete o[k]; if('n' in ch) openPref[o.t]=ch.n; s.o=o; normalize(); regions=null; commit(); updateOpenPanel(); }
+function setOpenOpt(ch){ const s=selOpen(); if(!s) return; const o={...s.o,...ch}; for(const k of ['sh','gr','bs','bd']) if(!o[k]) delete o[k]; if('n' in ch) openPref[o.t]=ch.n; s.o=o; if(ch.bs==='corner') s.o.f=cornerFlip(s); normalize(); regions=null; commit(); updateOpenPanel(); }
 $('#openSh').onchange=e=>setOpenOpt({sh:e.target.checked}); $('#openGr').onchange=e=>setOpenOpt({gr:e.target.checked});
 $('#openFlip').onclick=()=>{ const s=selOpen(); if(!s) return; cycleFlip(s); commit(); updateOpenPanel(); };
 $('#openDel').onclick=()=>{ const s=selOpen(); if(!s) return; const L=lineOf(s); replaceRange(L,L.a,L.b,null); selOpenPt=null; commit(); updateOpenPanel(); };
@@ -1713,7 +1757,7 @@ $$('#exportMenu button').forEach(b=>b.onclick=()=>{ closeExportMenu(); const k=b
   if(k==='all') saveJpeg();
   else if(k==='view') saveJpeg({x1:view.x,y1:view.y,x2:view.x+W/view.z,y2:view.y+H/view.z});
   else setExportPick(true); });
-function syncPanels(){ $$('#areaAllSeg button').forEach(x=>x.classList.toggle('on',x.dataset.a===state.areaMode)); $$('#thickSeg button').forEach(x=>x.classList.toggle('on',x.dataset.th===state.thick)); $$('#angleSeg button').forEach(x=>x.classList.toggle('on',x.dataset.ang===state.angle)); $('#joMode').value=state.joMode; $('#dimUnit').value=state.dimUnit; updateGridPanel(); $('#freePlace').checked=state.freePlace; syncFixStyle(); updatePanels(); }
+function syncPanels(){ $$('#areaAllSeg button').forEach(x=>x.classList.toggle('on',x.dataset.a===state.areaMode)); $$('#thickSeg button').forEach(x=>x.classList.toggle('on',x.dataset.th===state.thick)); $$('#angleSeg button').forEach(x=>x.classList.toggle('on',x.dataset.ang===state.angle)); $('#joMode').value=state.joMode; $('#dimUnit').value=state.dimUnit; updateGridPanel(); $('#freePlace').checked=state.freePlace; $('#textSnap').checked=state.textSnap; syncFixStyle(); updatePanels(); }
 
 // ===== 起動 =====
 // オフライン対応：Web サイトとして開いたとき（http/https）だけ sw.js を登録する。ファイルを直接開いた場合や、埋め込み表示で登録できない場合は何もしない
