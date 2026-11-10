@@ -283,7 +283,7 @@ kbd{font:11px ui-monospace,monospace;background:#F0F2F5;border:1px solid var(--l
             <label class="row">上がった先（直線） <span><input type="number" id="stairB" min="1" max="30" step="1"> 段</span></label>
             <p class="hint">折り返し・曲がり部分は 1 段＝平らな踊り場、2 段以上＝回り段（扇形の段）になります。</p>
           </div>
-          <label class="row">階高（床から上の床まで） <span><input type="number" id="stairFloorH" min="1000" max="6000" step="10"> mm</span></label>
+          <label class="row" id="stairFloorRow">階高（床から上の床まで） <span><input type="number" id="stairFloorH" min="1000" max="6000" step="10"> mm</span></label>
           <p class="hint" id="stairInfo"></p>
           <div class="stack"><button id="stairAuto">段数を自動（230mm ピッチ）に戻す</button></div>
         </div>
@@ -517,7 +517,13 @@ function sofaAt(c,x,y,w,h,seats){ box(c,x,y,w,h,{r:Math.min(90,h*0.12),fill:'clo
 // 階段の段の割り振り。直階段は段数 steps（蹴上げの数）。折り返し・L字は
 //   stepsA（上り始めの直線）・stepsTurn（曲がる部分：1＝平らな踊り場、2 以上＝回り段）・stepsB（上がった先の直線）を個別に指定できる。
 //   個別指定が無く steps（合計）だけあるときは、曲がり部分を 1 段として残りを直線の長さで按分。何も無ければ 230mm ピッチで自動
-function stairPlan(vid,w,h,f){ f=f||{}; const fl=vid==='U'?(l=>[h-l,h-l])(Math.min(w/2,h/3,910)):vid==='L'?(a=>[h-a,w-a])(Math.min(w/2,h/2,910)):[h];
+// 曲がり部分だけの部品（W90・W180）とらせん階段：段数 steps だけを持つ（既定と範囲は STAIR_PIECE）
+const STAIR_PIECE={W90:{def:3,min:1,max:8},W180:{def:4,min:1,max:8},spiral:{def:13,min:6,max:30}};
+const spiralGeo=(w,h)=>{ const R=Math.min(w,h)/2, rp=Math.max(60,R*0.12); return {R,rp,rw:Math.min(R-50,rp+300)}; };   // rw＝踏み面を測る歩く線（柱の面から 300mm）
+function stairPlan(vid,w,h,f){ f=f||{};
+  if(STAIR_PIECE[vid]){ const P=STAIR_PIECE[vid], n=clamp(Math.round(f.steps||P.def),P.min,P.max), fh=f.floorH||2900, g=spiralGeo(w,h), tr=vid==='spiral'?2*Math.PI*g.rw/n:0;
+    return {piece:true, flights:[{len:0,n,tread:tr}], steps:n, turn:vid==='spiral'?0:n, landings:0, mode:f.steps?'total':'auto', floorH:fh, riser:fh/n}; }
+  const fl=vid==='U'?(l=>[h-l,h-l])(Math.min(w/2,h/3,910)):vid==='L'?(a=>[h-a,w-a])(Math.min(w/2,h/2,910)):[h];
   const auto=len=>Math.max(1,Math.round(len/230)); let ns, turn=fl.length>1?1:0, mode='auto';
   if(fl.length>1&&(f.stepsA||f.stepsB||f.stepsTurn)){ ns=[f.stepsA||auto(fl[0]),f.stepsB||auto(fl[1])]; turn=f.stepsTurn||1; mode='sect'; }
   else if(f.steps){ const rest=Math.max(fl.length,f.steps-turn), tot=fl.reduce((a,b)=>a+b,0); ns=fl.map(len=>Math.max(1,Math.round(rest*len/tot))); ns[ns.length-1]=Math.max(1,rest-ns.slice(0,-1).reduce((a,b)=>a+b,0)); mode='total'; }
@@ -644,7 +650,24 @@ const FIX = {
     {id:'L',name:'L字',w:1820,h:2730,presets:[[1820,2730],[1820,1820],[2730,1820]],
       draw(c,w,h,f){ const sp=stairPlan('L',w,h,f), a=Math.min(w/2,h/2,910); poly(c,[[0,0],[w,0],[w,a],[a,a],[a,h],[0,h]],{fill:'body'});
         thinPen(c); treads(c,0,a,a,h-a,'v',sp.flights[0].n); treads(c,a,0,w-a,a,'h',sp.flights[1].n); winders(c,a,a,[[0,a],[0,0],[a,0]],sp.turn); pen(c); LN(c,a,0,a,a); LN(c,0,a,a,a);
-        c.beginPath(); c.moveTo(a/2,h-120); c.lineTo(a/2,a/2); c.lineTo(w-200,a/2); c.stroke(); arrowHead(c,w-200,a/2,1,0); }}]},
+        c.beginPath(); c.moveTo(a/2,h-120); c.lineTo(a/2,a/2); c.lineTo(w-200,a/2); c.stroke(); arrowHead(c,w-200,a/2,1,0); }},
+    // 曲がり部分だけ（90°）：下の辺から入って右の辺へ出る。内側の角は右下。左へ曲がるには「左右反転」
+    {id:'W90',name:'曲がり部分（90°）',w:910,h:910,presets:[[910,910],[1000,1000],[1365,1365]],
+      draw(c,w,h,f){ const sp=stairPlan('W90',w,h,f); box(c,0,0,w,h,{fill:'body'}); thinPen(c); winders(c,w,h,[[0,h],[0,0],[w,0]],sp.steps); pen(c);
+        c.beginPath(); c.moveTo(w*0.4,h-60); c.lineTo(w*0.4,h*0.4); c.lineTo(w-140,h*0.4); c.stroke(); arrowHead(c,w-140,h*0.4,1,0); }},
+    // 折り返し部分だけ（180°）：下の辺の左半分から入り、右半分へ出る。中心は下の辺の中央
+    {id:'W180',name:'折り返し部分（180°）',w:1820,h:910,presets:[[1820,910],[1820,1000],[2000,1000]],
+      draw(c,w,h,f){ const sp=stairPlan('W180',w,h,f); box(c,0,0,w,h,{fill:'body'}); thinPen(c); winders(c,w/2,h,[[0,h],[0,0],[w,0],[w,h]],sp.steps); pen(c);
+        const y=h*0.45; c.beginPath(); c.moveTo(w/4,h-60); c.lineTo(w/4,y); c.lineTo(3*w/4,y); c.lineTo(3*w/4,h-140); c.stroke(); arrowHead(c,3*w/4,h-140,0,1); }},
+    // らせん階段：中心の柱のまわりに扇形の段を一周並べる。下から上り始め、時計回り（反対回りは「左右反転」）
+    {id:'spiral',name:'らせん階段',w:1820,h:1820,presets:[[1400,1400],[1600,1600],[1820,1820],[2000,2000]],
+      draw(c,w,h,f){ const sp=stairPlan('spiral',w,h,f), {R,rp,rw}=spiralGeo(w,h), cx=w/2, cy=h/2, n=sp.steps, a0=Math.PI/2;
+        circ(c,cx,cy,R,{fill:'body'}); thinPen(c);
+        for(let k=1;k<n;k++){ const a=a0+2*Math.PI*k/n; LN(c,cx+rp*Math.cos(a),cy+rp*Math.sin(a),cx+R*Math.cos(a),cy+R*Math.sin(a)); }
+        pen(c); LN(c,cx+rp*Math.cos(a0),cy+rp*Math.sin(a0),cx+R*Math.cos(a0),cy+R*Math.sin(a0));   // 上り始め（＝上がりきった所）の線
+        circ(c,cx,cy,rp,{fill:'dark'});
+        const ra=(rw+R)/2, s0=a0+Math.PI/n, s1=a0+2*Math.PI*(n-0.6)/n; c.beginPath(); c.arc(cx,cy,ra,s0,s1); c.stroke();
+        arrowHead(c,cx+ra*Math.cos(s1),cy+ra*Math.sin(s1),-Math.sin(s1),Math.cos(s1)); }}]},
   bed:{name:'ベッド',cat:'furn',vars:[
     {id:'S',name:'シングル',w:970,h:1950,presets:[[900,1950],[970,1950],[1000,2000]],draw:(c,w,h)=>bedAt(c,0,w,h)},
     {id:'SD',name:'セミダブル',w:1200,h:1950,presets:[[1200,1950],[1250,2000]],draw:(c,w,h)=>bedAt(c,0,w,h)},
@@ -1573,11 +1596,13 @@ function updateFixPanel(){ const f=selFix&&state.fixtures.includes(selFix)?selFi
   if(d.vars.length>1) for(const x of d.vars){ const b=iconChip(fixIcon(x,40,30),x.name); b.classList.toggle('on',x===v); b.onclick=()=>{ f.v=x.id; resizeKeepCenter(f,x.w,x.h); commit(); updateFixPanel(); }; vc.appendChild(b); }
   const isSt=f.type==='stairs'; $('#stairOpts').style.display=isSt?'':'none';
   if(isSt){ const sp=stairPlan(v.id,w,h,f), two=sp.flights.length>1, act=document.activeElement, put=(id,val)=>{ if(act!==$(id)) $(id).value=val; };
+    const P=STAIR_PIECE[v.id]; $('#stairSteps').min=P?P.min:2; $('#stairSteps').max=P?P.max:40; $('#stairFloorRow').style.display=(P&&v.id!=='spiral')?'none':'';
     $('#stairTotalRow').style.display=two?'none':''; $('#stairSect').style.display=two?'':'none'; $('#stairTurnLabel').textContent=v.id==='L'?'曲がり部分':'折り返し部分';
     put('#stairSteps',sp.steps); put('#stairFloorH',sp.floorH); if(two){ put('#stairA',sp.flights[0].n); put('#stairTurn',sp.turn); put('#stairB',sp.flights[1].n); }
-    const tr=Math.min(...sp.flights.map(x=>x.tread)), bad=sp.riser>230||tr<150, tn=sp.turn>1?sp.turn+'段（回り段）':'踊り場';
-    $('#stairInfo').innerHTML=(sp.mode==='auto'?'自動：':'')+(two?sp.flights[0].n+'段＋'+tn+'＋'+sp.flights[1].n+'段':sp.flights[0].n+'段')+'＝合計 '+sp.steps+'段'+'<br>踏み面 約 '+Math.round(tr)+'mm ／ 蹴上げ 約 '+Math.round(sp.riser)+'mm'
-      +(bad?'<br><b style="color:#A5262C">住宅の階段の目安（蹴上げ 230mm 以下・踏み面 150mm 以上）を外れています</b>':''); }
+    if(P&&v.id!=='spiral'){ $('#stairInfo').innerHTML=(sp.mode==='auto'?'自動：':'')+(sp.steps>1?sp.steps+'段（回り段）':'平らな踊り場')+'<br>直階段などと組み合わせて使う部品です。1 段にすると平らな踊り場になります。'; }
+    else { const tr=Math.min(...sp.flights.map(x=>x.tread)), bad=sp.riser>230||tr<150, tn=sp.turn>1?sp.turn+'段（回り段）':'踊り場';
+    $('#stairInfo').innerHTML=(sp.mode==='auto'?'自動：':'')+(two?sp.flights[0].n+'段＋'+tn+'＋'+sp.flights[1].n+'段':sp.flights[0].n+'段')+'＝合計 '+sp.steps+'段'+'<br>踏み面 約 '+Math.round(tr)+'mm'+(v.id==='spiral'?'（柱の面から 300mm の位置）':'')+' ／ 蹴上げ 約 '+Math.round(sp.riser)+'mm'
+      +(bad?'<br><b style="color:#A5262C">住宅の階段の目安（蹴上げ 230mm 以下・踏み面 150mm 以上）を外れています</b>':''); } }
   $('#fixOpts').style.display=v.opts?'':'none'; if(v.opts){ const o=kopt(f,v.id==='mini'?1:3); $$('#hobSeg button').forEach(b=>b.classList.toggle('on',(b.dataset.hob==='ih')===o.ih)); $$('#burnerSeg button').forEach(b=>b.classList.toggle('on',+b.dataset.n===o.n)); $('#fixDw').checked=o.dw; }
   const el=$('#fixPresets'); el.innerHTML=''; for(const [pw,ph,label] of (v.presets||[])){ const b=document.createElement('button'); b.textContent=label||(pw+'×'+ph); b.classList.toggle('on',pw===w&&ph===h); b.onclick=()=>{ resizeKeepCenter(f,pw,ph); commit(); updateFixPanel(); }; el.appendChild(b); } }
 const fixDim=v=>clamp(Math.round((+v||0)/10)*10,100,6000);
@@ -1588,7 +1613,7 @@ $('#fixH').oninput=e=>{ if(selFix){resizeKeepCenter(selFix,selFix.w,fixDim(e.tar
 $$('#hobSeg button').forEach(b=>b.onclick=()=>{ if(selFix){ selFix.hob=b.dataset.hob; commit(); updateFixPanel(); } });
 $$('#burnerSeg button').forEach(b=>b.onclick=()=>{ if(selFix){ selFix.burners=+b.dataset.n; commit(); updateFixPanel(); } });
 $('#fixDw').onchange=e=>{ if(selFix){ selFix.dw=e.target.checked; commit(); } };
-$('#stairSteps').onchange=e=>{ if(!selFix) return; const n=clamp(Math.round(+e.target.value||0),2,40); selFix.steps=n; commit(); e.target.blur(); updateFixPanel(); };
+$('#stairSteps').onchange=e=>{ if(!selFix) return; const P=STAIR_PIECE[fixVar(selFix).id], n=clamp(Math.round(+e.target.value||0),P?P.min:2,P?P.max:40); selFix.steps=n; commit(); e.target.blur(); updateFixPanel(); };
 $('#stairFloorH').onchange=e=>{ if(!selFix) return; selFix.floorH=clamp(Math.round((+e.target.value||2900)/10)*10,1000,6000); commit(); e.target.blur(); updateFixPanel(); };
 $('#stairAuto').onclick=()=>{ if(!selFix) return; for(const k of ['steps','stepsA','stepsTurn','stepsB']) delete selFix[k]; commit(); updateFixPanel(); };
 for(const [id,key,max] of [['#stairA','stepsA',30],['#stairTurn','stepsTurn',6],['#stairB','stepsB',30]]) $(id).onchange=e=>{ if(!selFix) return;
