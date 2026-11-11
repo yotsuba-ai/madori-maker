@@ -99,8 +99,8 @@ kbd{font:11px ui-monospace,monospace;background:#F0F2F5;border:1px solid var(--l
   main{grid-template-columns:1fr;grid-template-rows:1fr auto auto 66px}
   .panelBar{display:block;grid-row:2;width:100%;height:36px;padding:0;border:0;border-top:1px solid var(--line);border-radius:0;background:var(--panel);font-size:13px;color:var(--muted)}
   body.panelHidden .panel{display:none}
-  .rail{flex-direction:row;border-right:0;border-top:1px solid var(--line);padding:4px;justify-content:space-around;grid-row:4}
-  .rail button{padding:4px 0;font-size:10px;min-width:34px;flex:1}
+  .rail{flex-direction:row;border-right:0;border-top:1px solid var(--line);padding:4px 2px;gap:0;justify-content:space-around;grid-row:4}
+  .rail button{padding:4px 0;font-size:10px;min-width:32px;flex:1}
   .rail .gap{display:none}
   .stage{grid-row:1}
   .panel{grid-row:3;border-left:0;border-top:1px solid var(--line);max-height:38vh;padding:10px 14px}
@@ -140,6 +140,7 @@ kbd{font:11px ui-monospace,monospace;background:#F0F2F5;border:1px solid var(--l
     <button data-tool="room" title="5"><svg viewBox="0 0 24 24"><path d="M4 4h16v16H4z"/><path d="M8 8h8v8H8z" fill="currentColor" stroke="none" opacity=".4"/></svg>部屋</button>
     <button data-tool="fix" title="6"><svg viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12" rx="3"/><ellipse cx="12" cy="12" rx="5" ry="3"/></svg>設備</button>
     <button data-tool="text" title="7"><svg viewBox="0 0 24 24"><path d="M5 6h14M12 6v13M9 19h6"/></svg>文字</button>
+    <button data-tool="arrow" title="0"><svg viewBox="0 0 24 24"><path d="M5 20V9h12"/><path d="M13 5l4 4-4 4"/></svg>矢印</button>
     <button data-tool="dim" title="9"><svg viewBox="0 0 24 24"><path d="M4 12h16M4 7v10M20 7v10M8 9l-4 3 4 3M16 9l4 3-4 3"/></svg>寸法</button>
     <div class="gap"></div>
     <button data-tool="pan" title="8"><svg viewBox="0 0 24 24"><path d="M12 3v18M3 12h18M8 7l4-4 4 4M8 17l4 4 4-4M7 8l-4 4 4 4M17 8l4 4-4 4"/></svg>移動</button>
@@ -241,6 +242,12 @@ kbd{font:11px ui-monospace,monospace;background:#F0F2F5;border:1px solid var(--l
       <p class="hint">クリックで文字を置き、下の欄で内容を打ち込みます。置いた文字はクリックで選択、ドラッグで移動できます。<br>大きさは文字の高さ（図面上の mm）です。選んだ文字は、右下の四角いつまみを引っ張っても大きさを変えられます。</p>
     </section>
 
+    <section data-for="arrow">
+      <h2>矢印</h2>
+      <p class="hint">点を順にクリックすると、折れ線の矢印を描きます（最後の点に矢じり）。最後の点をもう一度クリック（または Enter）で完成、Backspace で 1 つ戻す、Esc でやめる。<br>点はグリッドに吸着します（<kbd>Alt</kbd> で 1mm 単位、<kbd>Shift</kbd> で縦か横にそろえる）。階段の上り方向を自由な形で描くときなどに使います。</p>
+      <div id="arrowDraftBox" class="stack" style="display:none"><button id="arrowDraftDone">完成（Enter）</button><button id="arrowDraftBack">1 つ戻す（Backspace）</button><button id="arrowDraftCancel">やめる（Esc）</button></div>
+    </section>
+
     <section data-for="dim">
       <h2>寸法線</h2>
       <label class="row">表示単位
@@ -283,6 +290,8 @@ kbd{font:11px ui-monospace,monospace;background:#F0F2F5;border:1px solid var(--l
             <label class="row">上がった先（直線） <span><input type="number" id="stairB" min="1" max="30" step="1"> 段</span></label>
             <p class="hint">折り返し・曲がり部分は 1 段＝平らな踊り場、2 段以上＝回り段（扇形の段）になります。</p>
           </div>
+          <label class="row"><span><input type="checkbox" id="stairArrow"> 上り方向の矢印を表示</span></label>
+          <p class="hint">外すと階段の矢印を描きません。曲がり部分と直階段をつないだときなどは、矢印を外して「矢印」ツールで 1 本の矢印を描き足せます。</p>
           <label class="row" id="stairFloorRow">階高（床から上の床まで） <span><input type="number" id="stairFloorH" min="1000" max="6000" step="10"> mm</span></label>
           <p class="hint" id="stairInfo"></p>
           <div class="stack"><button id="stairAuto">段数を自動（230mm ピッチ）に戻す</button></div>
@@ -344,6 +353,11 @@ kbd{font:11px ui-monospace,monospace;background:#F0F2F5;border:1px solid var(--l
         <p class="areaBig" id="multiArea" style="display:none"></p>
         <p class="hint">選んだものをまとめてドラッグで移動できます（グリッドに吸着、自由配置の設定にも従います）。</p>
         <div class="stack"><button id="multiDup">まとめて複製（Ctrl+D）</button><button id="multiClear">選択を解除（Esc）</button><button id="multiDel" class="danger">まとめて削除（Delete）</button></div>
+      </div>
+      <div id="arrowSel" class="selbox" style="display:none">
+        <h3>選択中：矢印</h3>
+        <p class="hint">ドラッグで移動、点のつまみで形を直せます。</p>
+        <div class="stack"><button id="arrowRev">向きを反対にする</button><button id="arrowDel" class="danger">この矢印を削除</button></div>
       </div>
       <div id="dimSel" class="selbox" style="display:none">
         <h3>選択中：寸法線 <span id="dimLen"></span></h3>
@@ -641,24 +655,24 @@ const FIX = {
       draw(c,w,h){ box(c,0,0,w,h,{fill:'store'}); line(c,0,h,w,0,{thin:true}); }}]},
   stairs:{name:'階段',cat:'stairs',vars:[
     {id:'I',name:'直階段',w:910,h:2730,presets:[[910,2730],[910,3640],[1000,2730]],
-      draw(c,w,h,f){ const sp=stairPlan('I',w,h,f); box(c,0,0,w,h,{fill:'body'}); thinPen(c); treads(c,0,0,w,h,'v',sp.flights[0].n); pen(c); arrowUp(c,w/2,h-120,w/2,120); }},
+      draw(c,w,h,f){ const sp=stairPlan('I',w,h,f); box(c,0,0,w,h,{fill:'body'}); thinPen(c); treads(c,0,0,w,h,'v',sp.flights[0].n); pen(c); if(!(f&&f.noArrow)) arrowUp(c,w/2,h-120,w/2,120); }},
     // 左の段を上がり、上の踊り場で折り返して右の段を上がる。上り始める側を変えるには「左右反転」
     {id:'U',name:'折り返し',w:1820,h:2730,presets:[[1820,2730],[1820,1820],[2000,3185]],
       draw(c,w,h,f){ const sp=stairPlan('U',w,h,f); box(c,0,0,w,h,{fill:'body'}); const l=Math.min(w/2,h/3,910); thinPen(c); treads(c,0,l,w/2,h-l,'v',sp.flights[0].n); treads(c,w/2,l,w/2,h-l,'v',sp.flights[1].n); winders(c,w/2,l,[[0,l],[0,0],[w,0],[w,l]],sp.turn); pen(c); LN(c,0,l,w,l); LN(c,w/2,l,w/2,h);
-        c.beginPath(); c.moveTo(w/4,h-120); c.lineTo(w/4,l/2); c.lineTo(3*w/4,l/2); c.lineTo(3*w/4,h-200); c.stroke(); arrowHead(c,3*w/4,h-200,0,1); }},
+        if(!(f&&f.noArrow)){ c.beginPath(); c.moveTo(w/4,h-120); c.lineTo(w/4,l/2); c.lineTo(3*w/4,l/2); c.lineTo(3*w/4,h-200); c.stroke(); arrowHead(c,3*w/4,h-200,0,1); } }},
     // 左の段を上がり、左上の角の踊り場で右へ曲がって上の段を進む。外形は階段が占める L 字型
     {id:'L',name:'L字',w:1820,h:2730,presets:[[1820,2730],[1820,1820],[2730,1820]],
       draw(c,w,h,f){ const sp=stairPlan('L',w,h,f), a=Math.min(w/2,h/2,910); poly(c,[[0,0],[w,0],[w,a],[a,a],[a,h],[0,h]],{fill:'body'});
         thinPen(c); treads(c,0,a,a,h-a,'v',sp.flights[0].n); treads(c,a,0,w-a,a,'h',sp.flights[1].n); winders(c,a,a,[[0,a],[0,0],[a,0]],sp.turn); pen(c); LN(c,a,0,a,a); LN(c,0,a,a,a);
-        c.beginPath(); c.moveTo(a/2,h-120); c.lineTo(a/2,a/2); c.lineTo(w-200,a/2); c.stroke(); arrowHead(c,w-200,a/2,1,0); }},
+        if(!(f&&f.noArrow)){ c.beginPath(); c.moveTo(a/2,h-120); c.lineTo(a/2,a/2); c.lineTo(w-200,a/2); c.stroke(); arrowHead(c,w-200,a/2,1,0); } }},
     // 曲がり部分だけ（90°）：下の辺から入って右の辺へ出る。内側の角は右下。左へ曲がるには「左右反転」
     {id:'W90',name:'曲がり部分（90°）',w:910,h:910,presets:[[910,910],[1000,1000],[1365,1365]],
       draw(c,w,h,f){ const sp=stairPlan('W90',w,h,f); box(c,0,0,w,h,{fill:'body'}); thinPen(c); winders(c,w,h,[[0,h],[0,0],[w,0]],sp.steps); pen(c);
-        c.beginPath(); c.moveTo(w*0.4,h-60); c.lineTo(w*0.4,h*0.4); c.lineTo(w-140,h*0.4); c.stroke(); arrowHead(c,w-140,h*0.4,1,0); }},
+        if(!(f&&f.noArrow)){ c.beginPath(); c.moveTo(w*0.4,h-60); c.lineTo(w*0.4,h*0.4); c.lineTo(w-140,h*0.4); c.stroke(); arrowHead(c,w-140,h*0.4,1,0); } }},
     // 折り返し部分だけ（180°）：下の辺の左半分から入り、右半分へ出る。中心は下の辺の中央
     {id:'W180',name:'折り返し部分（180°）',w:1820,h:910,presets:[[1820,910],[1820,1000],[2000,1000]],
       draw(c,w,h,f){ const sp=stairPlan('W180',w,h,f); box(c,0,0,w,h,{fill:'body'}); thinPen(c); winders(c,w/2,h,[[0,h],[0,0],[w,0],[w,h]],sp.steps); pen(c);
-        const y=h*0.45; c.beginPath(); c.moveTo(w/4,h-60); c.lineTo(w/4,y); c.lineTo(3*w/4,y); c.lineTo(3*w/4,h-140); c.stroke(); arrowHead(c,3*w/4,h-140,0,1); }},
+        const y=h*0.45; if(!(f&&f.noArrow)){ c.beginPath(); c.moveTo(w/4,h-60); c.lineTo(w/4,y); c.lineTo(3*w/4,y); c.lineTo(3*w/4,h-140); c.stroke(); arrowHead(c,3*w/4,h-140,0,1); } }},
     // らせん階段：中心の柱のまわりに扇形の段を一周並べる。下から上り始め、時計回り（反対回りは「左右反転」）
     {id:'spiral',name:'らせん階段',w:1820,h:1820,presets:[[1400,1400],[1600,1600],[1820,1820],[2000,2000]],
       draw(c,w,h,f){ const sp=stairPlan('spiral',w,h,f), {R,rp,rw}=spiralGeo(w,h), cx=w/2, cy=h/2, n=sp.steps, a0=Math.PI/2;
@@ -666,8 +680,8 @@ const FIX = {
         for(let k=1;k<n;k++){ const a=a0+2*Math.PI*k/n; LN(c,cx+rp*Math.cos(a),cy+rp*Math.sin(a),cx+R*Math.cos(a),cy+R*Math.sin(a)); }
         pen(c); LN(c,cx+rp*Math.cos(a0),cy+rp*Math.sin(a0),cx+R*Math.cos(a0),cy+R*Math.sin(a0));   // 上り始め（＝上がりきった所）の線
         circ(c,cx,cy,rp,{fill:'dark'});
-        const ra=(rw+R)/2, s0=a0+Math.PI/n, s1=a0+2*Math.PI*(n-0.6)/n; c.beginPath(); c.arc(cx,cy,ra,s0,s1); c.stroke();
-        arrowHead(c,cx+ra*Math.cos(s1),cy+ra*Math.sin(s1),-Math.sin(s1),Math.cos(s1)); }}]},
+        const ra=(rw+R)/2, s0=a0+Math.PI/n, s1=a0+2*Math.PI*(n-0.6)/n; if(!(f&&f.noArrow)){ c.beginPath(); c.arc(cx,cy,ra,s0,s1); c.stroke();
+        arrowHead(c,cx+ra*Math.cos(s1),cy+ra*Math.sin(s1),-Math.sin(s1),Math.cos(s1)); } }}]},
   bed:{name:'ベッド',cat:'furn',vars:[
     {id:'S',name:'シングル',w:970,h:1950,presets:[[900,1950],[970,1950],[1000,2000]],draw:(c,w,h)=>bedAt(c,0,w,h)},
     {id:'SD',name:'セミダブル',w:1200,h:1950,presets:[[1200,1950],[1250,2000]],draw:(c,w,h)=>bedAt(c,0,w,h)},
@@ -731,10 +745,11 @@ const textFont=(t,px)=>(t.bold?'700 ':'')+px+'px '+fontFamily(t);
 //   o = null は普通の壁、{t:OPEN の id, f:向き} は建具
 // fixtures: {type,v,x,y,rot,mir,w,h}（v はパターン id、w,h が無ければパターンの標準サイズ）
 // dims: 寸法線 {x1,y1,x2,y2}
-const state = {walls:[], texts:[], fixtures:[], rooms:[], dims:[], thick:'normal', joMode:'module', grid:455, angle:'ortho', dimUnit:'mm', fixStyle:'color', freePlace:false, textSnap:false, areaMode:'jo'};
+// arrows: 自由な矢印線 {pts:[[x,y],...]}（最後の点に矢じり）
+const state = {walls:[], texts:[], fixtures:[], rooms:[], dims:[], arrows:[], thick:'normal', joMode:'module', grid:455, angle:'ortho', dimUnit:'mm', fixStyle:'color', freePlace:false, textSnap:false, areaMode:'jo'};
 let tool='wall', doorSub='door', winSub='window', fixType='kitchen', textSize=410, textVert=false, textFontNew='', textBoldNew=false;
 const fixVarSel={};               // 型ごとに、次に置くパターンの id
-let selRoom=null, selFix=null, selText=null, selOpenPt=null, selWallPt=null, selDim=null;   // selOpenPt / selWallPt: 選択中の建具・壁の中点 mm（線分は normalize で作り直されるので点で持つ）
+let selRoom=null, selFix=null, selText=null, selOpenPt=null, selWallPt=null, selDim=null, selArrow=null, arrowDraft=null;   // selOpenPt / selWallPt: 選択中の建具・壁の中点 mm（線分は normalize で作り直されるので点で持つ）
 let view={x:0,y:0,z:24/MOD};      // x,y = 画面左上のワールド座標（mm）、z = px/mm
 let hist=[], redo=[], lastSnap;
 let regions=null;                 // 壁で囲まれた多角形（部屋候補）のキャッシュ
@@ -815,7 +830,7 @@ function inheritFlip(L,from,to,t){ for(const s of state.walls){ if(!s.o||s.o.t!=
 const midOf=s=>[(s.x1+s.x2)/2,(s.y1+s.y2)/2];
 // 選択中の壁（中点から引き直す）
 function selWall(){ if(!selWallPt) return null; const s=nearestSeg(selWallPt,1); return s&&!s.o?s:null; }
-function clearSel(){ selRoom=null; selFix=null; selText=null; selOpenPt=null; selWallPt=null; selDim=null; multi=null; areaSel=null; areaAdd=false; }
+function clearSel(){ selRoom=null; selFix=null; selText=null; selOpenPt=null; selWallPt=null; selDim=null; selArrow=null; multi=null; areaSel=null; areaAdd=false; }
 // 面積の合計用に選んだ部屋（壁で囲まれた領域）。領域は作り直されるので、中の点で持つ
 let areaSel=null, areaAdd=false;   // areaSel: [[x,y],...]、areaAdd: タップだけで部屋を足し外しするモード（スマホ用）
 const TSUBO_M2=400/121;   // 1坪＝400/121㎡（約 3.3058㎡）
@@ -832,7 +847,7 @@ function toggleAreaAt(w){ const sh=shapeAt(w); if(!sh) return false; const key=s
 // 範囲選択（選択ツールで囲んだもの）。壁・建具の線分は normalize で作り直されるので中点で持つ
 let multi=null;   // {fix:[], text:[], dim:[], room:[部屋の設定], segPts:[[x,y],...]}
 function multiSegs(){ if(!multi) return []; const out=[]; for(const q of multi.segPts){ const g=nearestSeg(q,1); if(g&&!out.includes(g)) out.push(g); } return out; }
-function multiCount(){ return multi?multi.fix.length+multi.text.length+multi.dim.length+multiSegs().length:0; }
+function multiCount(){ return multi?multi.fix.length+multi.text.length+multi.dim.length+(multi.arrow||[]).length+multiSegs().length:0; }
 // 縦書き（t.vert）：x, y は 1 列の左上。1 文字ずつ下へ並べる
 const V_STEP=1.05, V_ROT=new Set([...'ー—―–‐-−〜～…‥（）()「」『』【】〈〉《》［］[]｛｝{}＝=→←_＿：:']), V_PUNCT=new Set([...'、。，．,.']), V_SMALL=new Set([...'ぁぃぅぇぉっゃゅょゎァィゥェォッャュョヮ']);
 function textBox(t){ if(t.vert) return [t.x,t.y,t.x+t.size,t.y+t.size*V_STEP*Math.max(1,Array.from(t.text).length)];
@@ -844,17 +859,28 @@ function drawVText(c,text,x,y,px){ c.save(); c.textAlign='center'; c.textBaselin
     else if(V_SMALL.has(ch)) c.fillText(ch,cx+px*0.1,cy-px*0.1);     // 小さい仮名は少し右上へ
     else c.fillText(ch,cx,cy); });
   c.restore(); }
+// 自由な矢印線：折れ線を引き、最後の点に矢じり（mm 座標で描く）
+function drawArrowLine(c,z,ox,oy,pts){ if(!pts||pts.length<2) return; c.save(); c.scale(z,z); c.translate(-ox,-oy); pen(c); c.lineJoin='miter'; c.lineCap='butt';
+  c.beginPath(); pts.forEach(([x,y],i)=>i?c.lineTo(x,y):c.moveTo(x,y)); c.stroke();
+  const [x1,y1]=pts[pts.length-2], [x2,y2]=pts[pts.length-1], L=Math.hypot(x2-x1,y2-y1)||1; arrowHead(c,x2,y2,(x2-x1)/L,(y2-y1)/L); c.restore(); }
+const arrowSegs=a=>a.pts.slice(1).map((q,i)=>({x1:a.pts[i][0],y1:a.pts[i][1],x2:q[0],y2:q[1]}));
+function hitArrow(w){ const tol=10/view.z; for(let i=state.arrows.length-1;i>=0;i--){ if(arrowSegs(state.arrows[i]).some(g=>segDist(g,w)<tol)) return state.arrows[i]; } return null; }
+const arrowBox=a=>{ const xs=a.pts.map(q=>q[0]), ys=a.pts.map(q=>q[1]); return [Math.min(...xs),Math.min(...ys),Math.max(...xs),Math.max(...ys)]; };
+// 矢印ツールの点：グリッドに吸着（Alt で 1mm 単位）。直前の点と縦横をそろえる（Shift で必ず、それ以外は画面 8px 以内）
+function arrowPt(w,prev){ const q=altDown?[Math.round(w[0]),Math.round(w[1])]:snapPt(w); return prev?straightEnd(prev,q):q; }
+function finishArrowDraft(){ const d=arrowDraft; arrowDraft=null; if(d&&d.length>=2){ const a={pts:d}; state.arrows.push(a); selArrow=a; commit(); setStatus('矢印を描きました'); } else setStatus(hintOf('arrow')); updatePanels(); render(); }
 // 範囲 r（mm）に丸ごと入っているものを選ぶ
 function selectInRect(r){ const inR=(x,y)=>x>=r.x1&&x<=r.x2&&y>=r.y1&&y<=r.y2;
   multi={fix:state.fixtures.filter(f=>{ if(!FIX[f.type]) return false; const [fw,fh]=fixDims(f); return inR(f.x,f.y)&&inR(f.x+fw,f.y+fh); }),
     text:state.texts.filter(t=>{ const b=textBox(t); return inR(b[0],b[1])&&inR(b[2],b[3]); }),
     dim:state.dims.filter(d=>inR(d.x1,d.y1)&&inR(d.x2,d.y2)),
+    arrow:state.arrows.filter(a=>a.pts.every(([x,y])=>inR(x,y))),
     room:state.rooms.filter(q=>q.poly?q.poly.every(([x,y])=>inR(x,y)):q.pt&&inR(q.pt[0],q.pt[1])),
     segPts:state.walls.filter(g=>inR(g.x1,g.y1)&&inR(g.x2,g.y2)).map(midOf)};
   ensureRegions(); multi.areaPts=regions.filter(g=>g.poly.every(([x,y])=>inR(x,y))).map(g=>[g.cx,g.cy]);   // 丸ごと囲んだ部屋は面積を合計する
   if(!multiCount()) multi=null; }
 function multiBox(){ if(!multi) return null; let x1=Infinity,y1=Infinity,x2=-Infinity,y2=-Infinity; const ext=(a,b,c,d)=>{x1=Math.min(x1,a,c);y1=Math.min(y1,b,d);x2=Math.max(x2,a,c);y2=Math.max(y2,b,d);};
-  for(const f of multi.fix){ const [fw,fh]=fixDims(f); ext(f.x,f.y,f.x+fw,f.y+fh); } for(const t of multi.text) ext(...textBox(t)); for(const d of multi.dim) ext(d.x1,d.y1,d.x2,d.y2); for(const g of multiSegs()) ext(g.x1,g.y1,g.x2,g.y2);
+  for(const f of multi.fix){ const [fw,fh]=fixDims(f); ext(f.x,f.y,f.x+fw,f.y+fh); } for(const t of multi.text) ext(...textBox(t)); for(const d of multi.dim) ext(d.x1,d.y1,d.x2,d.y2); for(const a of multi.arrow||[]) ext(...arrowBox(a)); for(const g of multiSegs()) ext(g.x1,g.y1,g.x2,g.y2);
   return x1<=x2&&y1<=y2?[x1,y1,x2,y2]:null; }
 // 線分の一覧を壁として置く（重なる既存の壁は置き換え）。厚さを保ち、建具は壁を置いたあとに重ねる
 function placeSegs(list){ const th0=state.thick;
@@ -872,20 +898,20 @@ function gridDelta(res,r){ if(!res.length) return snapV(r); let best=snapV(r), b
   return best; }
 function startMultiMove(w){ const segs=multiSegs(); return {mode:'moveMulti',w0:w,moved:false,dx:0,dy:0,
   resX:gridResidues(segs.flatMap(g=>[g.x1,g.x2])), resY:gridResidues(segs.flatMap(g=>[g.y1,g.y2])),
-  fix:multi.fix.map(f=>[f.x,f.y]), text:multi.text.map(t=>[t.x,t.y]), dim:multi.dim.map(d=>[d.x1,d.y1,d.x2,d.y2]), room:multi.room.map(q=>q.poly?q.poly.map(p=>[...p]):[...q.pt]), area:(multi.areaPts||[]).map(q=>[...q]),
+  fix:multi.fix.map(f=>[f.x,f.y]), text:multi.text.map(t=>[t.x,t.y]), dim:multi.dim.map(d=>[d.x1,d.y1,d.x2,d.y2]), arrow:(multi.arrow||[]).map(a=>a.pts.map(q=>[...q])), room:multi.room.map(q=>q.poly?q.poly.map(p=>[...p]):[...q.pt]), area:(multi.areaPts||[]).map(q=>[...q]),
   walls0:state.walls.map(g=>({...g,o:g.o?{...g.o}:null})), idx:new Set(segs.map(g=>state.walls.indexOf(g))), segPts0:multi.segPts.map(q=>[...q])}; }
 // 移動量 dx,dy を元の位置から当てはめる（ドラッグ中は壁を重ねて仮表示、確定時に placeSegs で置き直す）
 function applyMultiMove(d,dx,dy,final){ d.dx=dx; d.dy=dy;
   multi.fix.forEach((f,i)=>{ f.x=d.fix[i][0]+dx; f.y=d.fix[i][1]+dy; }); multi.text.forEach((t,i)=>{ t.x=d.text[i][0]+dx; t.y=d.text[i][1]+dy; });
-  multi.dim.forEach((m,i)=>{ const o=d.dim[i]; m.x1=o[0]+dx; m.y1=o[1]+dy; m.x2=o[2]+dx; m.y2=o[3]+dy; }); multi.room.forEach((q,i)=>{ if(q.poly) q.poly=d.room[i].map(p=>[p[0]+dx,p[1]+dy]); else q.pt=[d.room[i][0]+dx,d.room[i][1]+dy]; });
+  multi.dim.forEach((m,i)=>{ const o=d.dim[i]; m.x1=o[0]+dx; m.y1=o[1]+dy; m.x2=o[2]+dx; m.y2=o[3]+dy; }); (multi.arrow||[]).forEach((a,i)=>{ a.pts=d.arrow[i].map(q=>[q[0]+dx,q[1]+dy]); }); multi.room.forEach((q,i)=>{ if(q.poly) q.poly=d.room[i].map(p=>[p[0]+dx,p[1]+dy]); else q.pt=[d.room[i][0]+dx,d.room[i][1]+dy]; });
   multi.segPts=d.segPts0.map(q=>[q[0]+dx,q[1]+dy]); multi.areaPts=d.area.map(q=>[q[0]+dx,q[1]+dy]);
   const keep=d.walls0.filter((g,i)=>!d.idx.has(i)).map(g=>({...g,o:g.o?{...g.o}:null})), moved=d.walls0.filter((g,i)=>d.idx.has(i)).map(g=>shiftSeg(g,dx,dy));
   if(final){ state.walls=keep; normalize(); placeSegs(moved); } else state.walls=keep.concat(moved);
   regions=null; }
 function dupMulti(){ const off=Math.max(state.grid,snapV(910)||state.grid), segs=multiSegs().map(g=>shiftSeg(g,off,off));
-  const nf=multi.fix.map(f=>({...f,x:f.x+off,y:f.y+off})), nt=multi.text.map(t=>({...t,x:t.x+off,y:t.y+off})), nd=multi.dim.map(d=>({x1:d.x1+off,y1:d.y1+off,x2:d.x2+off,y2:d.y2+off})), nr=multi.room.map(q=>q.poly?{...q,poly:q.poly.map(p=>[p[0]+off,p[1]+off])}:{...q,pt:[q.pt[0]+off,q.pt[1]+off]});
-  state.fixtures.push(...nf); state.texts.push(...nt); state.dims.push(...nd); state.rooms.push(...nr); placeSegs(segs);
-  multi={fix:nf,text:nt,dim:nd,room:nr,segPts:segs.map(midOf),areaPts:(multi.areaPts||[]).map(q=>[q[0]+off,q[1]+off])}; commit(); }
+  const nf=multi.fix.map(f=>({...f,x:f.x+off,y:f.y+off})), nt=multi.text.map(t=>({...t,x:t.x+off,y:t.y+off})), nd=multi.dim.map(d=>({x1:d.x1+off,y1:d.y1+off,x2:d.x2+off,y2:d.y2+off})), na=(multi.arrow||[]).map(a=>({...a,pts:a.pts.map(q=>[q[0]+off,q[1]+off])})), nr=multi.room.map(q=>q.poly?{...q,poly:q.poly.map(p=>[p[0]+off,p[1]+off])}:{...q,pt:[q.pt[0]+off,q.pt[1]+off]});
+  state.fixtures.push(...nf); state.texts.push(...nt); state.dims.push(...nd); state.arrows.push(...na); state.rooms.push(...nr); placeSegs(segs);
+  multi={fix:nf,text:nt,dim:nd,arrow:na,room:nr,segPts:segs.map(midOf),areaPts:(multi.areaPts||[]).map(q=>[q[0]+off,q[1]+off])}; commit(); }
 // 選択中の建具（中点から引き直す）
 function selOpen(){ if(!selOpenPt) return null; const s=nearestSeg(selOpenPt,1); return s&&s.o?s:null; }
 // 選択中の建具の幅を、中心を保ったまま変える
@@ -912,7 +938,7 @@ function fixSize(f){ const v=fixVar(f); return [f.w||v.w, f.h||v.h]; }
 function fixDims(f){ const [w,h]=fixSize(f); return f.rot%2?[h,w]:[w,h]; }
 
 // ===== 履歴・保存 =====
-function snap(){ return JSON.stringify({walls:state.walls,texts:state.texts,fixtures:state.fixtures,rooms:state.rooms,dims:state.dims}); }
+function snap(){ return JSON.stringify({walls:state.walls,texts:state.texts,fixtures:state.fixtures,rooms:state.rooms,dims:state.dims,arrows:state.arrows}); }
 function applySnap(s){ applyDoc(JSON.parse(s)); }
 function commit(){ hist.push(lastSnap); if(hist.length>100) hist.shift(); redo.length=0; lastSnap=snap(); regions=null; save(); render(); }
 function undo(){ if(!hist.length) return; redo.push(snap()); applySnap(hist.pop()); lastSnap=snap(); save(); updatePanels(); render(); }
@@ -939,7 +965,7 @@ function applyDoc(o){
   // 厚さを持たない旧データは、保存時の全体設定（無ければ普通）を全線分に付ける
   const th0=THICK[o.thick]?o.thick:'normal';
   state.walls=(o.walls||[]).map(s=>mkSeg(s.x1,s.y1,s.x2,s.y2,s.o||null,s.th||th0)); normalize();
-  state.texts=o.texts||[]; state.rooms=o.rooms||[]; state.dims=o.dims||[];
+  state.texts=o.texts||[]; state.rooms=o.rooms||[]; state.dims=o.dims||[]; state.arrows=(o.arrows||[]).filter(a=>a&&Array.isArray(a.pts)&&a.pts.length>=2);
   state.fixtures=(o.fixtures||[]).map(f=>FIX_ALIAS[f.type]?{...f,type:FIX_ALIAS[f.type][0],v:FIX_ALIAS[f.type][1]}:f).filter(f=>FIX[f.type]);
   regions=null; clearSel();
 }
@@ -1167,6 +1193,8 @@ function drawScene(c,z,ox,oy,opt){
   for(const f of state.fixtures) if(FIX[f.type]&&FIX[f.type].front) drawFix(f);
   // 寸法線
   for(const d of state.dims){ const [ax,ay]=S(d.x1,d.y1),[bx,by]=S(d.x2,d.y2); drawDim(c,z,ax,ay,bx,by,Math.hypot(d.x2-d.x1,d.y2-d.y1),'#1B2433'); }
+  // 自由な矢印線（階段の矢印と同じ線の太さ・矢じりの大きさ）
+  FS=fixStyleFor(z); for(const a of state.arrows) drawArrowLine(c,z,ox,oy,a.pts);
   // 部屋ラベル
   c.textAlign='center'; c.textBaseline='middle'; c.fillStyle='#1B2433';
   for(const r of shapes){ const p=r.props; const [sx,sy]=S(r.cx,r.cy); const at=areaText(r.area,p.area||'jo');
@@ -1233,6 +1261,12 @@ function paint(){
     if(roomDraft&&roomDraft.length){ const pts=roomDraft.concat(hover&&hover.pt?[hover.pt]:[]); ctx.beginPath(); pts.forEach((q,i)=>{ const [x,y]=S(q[0],q[1]); i?ctx.lineTo(x,y):ctx.moveTo(x,y); }); if(pts.length>2){ ctx.closePath(); ctx.fill(); } ctx.stroke(); ctx.setLineDash([]);
       roomDraft.forEach((q,i)=>{ const [x,y]=S(q[0],q[1]); ctx.fillStyle=i?'#2B4C7E':'#fff'; ctx.beginPath(); ctx.arc(x,y,i?4:7,0,7); ctx.fill(); if(!i) ctx.stroke(); }); }
     ctx.restore(); }
+  if(tool==='arrow'&&arrowDraft&&arrowDraft.length){   // 矢印の下書き
+    const pts=arrowDraft.concat(hover&&hover.pt?[hover.pt]:[]); ctx.save(); ctx.strokeStyle='#2B4C7E'; ctx.fillStyle='#2B4C7E'; ctx.lineWidth=2; ctx.setLineDash([]);
+    ctx.beginPath(); pts.forEach((q,i)=>{ const [x,y]=S(q[0],q[1]); i?ctx.lineTo(x,y):ctx.moveTo(x,y); }); ctx.stroke();
+    arrowDraft.forEach(q=>{ const [x,y]=S(q[0],q[1]); ctx.beginPath(); ctx.arc(x,y,4,0,7); ctx.fill(); }); ctx.restore(); }
+  if(selArrow&&(tool==='select'||tool==='arrow')&&state.arrows.includes(selArrow)){ ctx.save(); ctx.strokeStyle='rgba(43,76,126,.25)'; ctx.lineWidth=12; ctx.lineCap='round'; ctx.lineJoin='round';
+    ctx.beginPath(); selArrow.pts.forEach((q,i)=>{ const [x,y]=S(q[0],q[1]); i?ctx.lineTo(x,y):ctx.moveTo(x,y); }); ctx.stroke(); ctx.restore(); }
   if(gapMarks&&tool==='room'){ ctx.save(); ctx.strokeStyle='#D0342C'; ctx.fillStyle='rgba(208,52,44,.18)'; ctx.lineWidth=2.5; ctx.setLineDash([]);
     for(const q of gapMarks){ const [sx,sy]=S(q[0],q[1]); ctx.beginPath(); ctx.arc(sx,sy,11,0,7); ctx.fill(); ctx.stroke(); } ctx.restore(); }
   if(hover){ if(hover.pt){const [sx,sy]=S(hover.pt[0],hover.pt[1]); ctx.fillStyle='#2B4C7E'; ctx.beginPath();ctx.arc(sx,sy,4,0,7);ctx.fill(); if(hover.pt.k) snapRing(ctx,sx,sy);}
@@ -1241,7 +1275,7 @@ function paint(){
   // 設定済みの部屋の面積合計
   let tot=0,n=0; for(const r of roomShapes()){ tot+=r.area; n++; }
   const msg=n?`設定済み ${n} 部屋の合計：${areaText(tot,'both')}`:'部屋を設定すると、ここに面積の合計が出ます'; const el=$('#roomTotal'); if(el.textContent!==msg) el.textContent=msg;
-  const hs=(!drag||drag.mode==='resizeFix'||drag.mode==='resizeText'||drag.mode==='roomVert'||drag.mode==='resizeOpen'||drag.mode==='moveOpen')?selHandles():null;
+  const hs=(!drag||drag.mode==='resizeFix'||drag.mode==='resizeText'||drag.mode==='roomVert'||drag.mode==='arrowVert'||drag.mode==='resizeOpen'||drag.mode==='moveOpen')?selHandles():null;
   if(hs){ const r=matchMedia('(pointer:coarse)').matches?7:5; for(const [id,x,y] of hs){ const [sx,sy]=S(x,y); ctx.fillStyle='#fff'; ctx.strokeStyle='#2B4C7E'; ctx.lineWidth=1.5; ctx.setLineDash([]);
     ctx.beginPath(); if(id==='a'||id==='b') ctx.arc(sx,sy,r+1,0,7); else ctx.rect(sx-r,sy-r,2*r,2*r); ctx.fill(); ctx.stroke(); } }
   placeFloatBar();
@@ -1265,6 +1299,7 @@ function selHandles(){ const k=visKind();
     return [['nw',x1,y1],['n',mx,y1],['ne',x2,y1],['e',x2,my],['se',x2,y2],['s',mx,y2],['sw',x1,y2],['w',x1,my]]; }
   if(k==='open'){ const sg=selOpen(); return [['a',sg.x1,sg.y1],['b',sg.x2,sg.y2]]; }
   if(k==='text'){ const b=textBox(selText); return [['ts',b[2],b[3]]]; }
+  if(k==='arrow') return selArrow.pts.map((q,i)=>['p'+i,q[0],q[1]]);
   if((k==='room'||(!k&&tool==='room'&&roomMode!=='poly'))&&selRoom&&selRoom.poly&&state.rooms.includes(selRoom)) return selRoom.poly.map((q,i)=>['r'+i,q[0],q[1]]);
   return null; }
 const HANDLE_CUR={nw:'nwse-resize',se:'nwse-resize',ne:'nesw-resize',sw:'nesw-resize',n:'ns-resize',s:'ns-resize',e:'ew-resize',w:'ew-resize',a:'grab',b:'grab',ts:'nwse-resize'};
@@ -1313,17 +1348,23 @@ cv.addEventListener('pointerdown',e=>{
   if(e.button===2||e.button===1||space||tool==='pan'){ drag={mode:'pan',sx:e.offsetX,sy:e.offsetY,vx:view.x,vy:view.y}; hover=null; cv.style.cursor='grabbing'; return; }
   if(e.button!==0) return;
   altDown=e.altKey; shiftDown=e.shiftKey;
-  if(tool==='select'||tool==='fix'||tool==='door'||tool==='window'||tool==='text'||(tool==='room'&&roomMode!=='poly')){ const hid=hitHandle(w);
+  if(tool==='select'||tool==='fix'||tool==='door'||tool==='window'||tool==='text'||(tool==='arrow'&&!arrowDraft)||(tool==='room'&&roomMode!=='poly')){ const hid=hitHandle(w);
+    if(hid&&hid[0]==='p'){ drag={mode:'arrowVert',a:selArrow,i:+hid.slice(1),moved:false}; render(); return; }
     if(hid&&hid[0]==='r'){ drag={mode:'roomVert',rm:selRoom,i:+hid.slice(1),moved:false}; render(); return; }
     if(hid==='ts'){ const b=textBox(selText); drag={mode:'resizeText',t:selText,s0:selText.size,bw:b[2]-b[0],bh:b[3]-b[1],moved:false}; render(); return; }
     if(hid){ const k=visKind(); drag=k==='fix'?{mode:'resizeFix',f:selFix,id:hid,box0:[selFix.x,selFix.y,selFix.x+fixDims(selFix)[0],selFix.y+fixDims(selFix)[1]],moved:false}:startOpenDrag('resizeOpen',hid,w); render(); return; } }
   const startLine=(mode,seg,extra)=>{ const L=lineOf(seg); const t=along(L,w); drag={mode,seg,L,p0:t,a0:alongFloor(L,t),s0:alongSnap(L,t),moved:false,...extra}; preview={kind:mode,...dragRange(drag,w)}; };
   switch(tool){
     case 'wall': drag={mode:'wall',a:snapDraw(w),sx:e.offsetX,sy:e.offsetY,moved:false}; preview={kind:'wall',ax:drag.a[0],ay:drag.a[1],bx:drag.a[0],by:drag.a[1]}; break;
-    case 'erase': { const t=hitText(w), f=hitFix(w), dm=hitDim(w);
+    case 'arrow': { drag=null; if(!arrowDraft){ arrowDraft=[]; selArrow=null; }
+      const last=arrowDraft[arrowDraft.length-1], q=arrowPt(w,(shiftDown||last)?last:null);
+      if(last&&arrowDraft.length>=2&&Math.hypot(last[0]-q[0],last[1]-q[1])*view.z<14){ finishArrowDraft(); break; }   // 最後の点をもう一度クリックで完成
+      if(!last||last[0]!==q[0]||last[1]!==q[1]) arrowDraft.push(q); updateArrowPanel(); setStatus('次の点をクリック。最後の点をもう一度クリック（または Enter）で完成、Backspace で 1 つ戻す、Esc でやめる'); break; }
+    case 'erase': { const t=hitText(w), f=hitFix(w), dm=hitDim(w), ar=(t||f||dm)?null:hitArrow(w);
       if(t){state.texts.splice(state.texts.indexOf(t),1); if(selText===t)selText=null; drag={mode:'none',changed:true};}
       else if(f){state.fixtures.splice(state.fixtures.indexOf(f),1); if(selFix===f)selFix=null; drag={mode:'none',changed:true};}
       else if(dm){state.dims.splice(state.dims.indexOf(dm),1); drag={mode:'none',changed:true};}
+      else if(ar){state.arrows.splice(state.arrows.indexOf(ar),1); if(selArrow===ar)selArrow=null; drag={mode:'none',changed:true};}
       else { const seg=nearestSeg(w); if(seg) startLine('erase',seg); else drag=null; } break; }
     case 'dim': drag={mode:'dim',a:snapDraw(w),sx:e.offsetX,sy:e.offsetY,moved:false}; preview={kind:'dim',ax:drag.a[0],ay:drag.a[1],bx:drag.a[0],by:drag.a[1]}; break;
     case 'door': case 'window': { const sub=curSub(); const seg=nearestSeg(w); if(!seg){ selOpenPt=null; updateOpenPanel(); drag=null; break; }
@@ -1337,10 +1378,11 @@ cv.addEventListener('pointerdown',e=>{
     case 'fix': { const f=hitFix(w); if(f){selFix=f;drag={mode:'moveFix',f,ox:w[0]-f.x,oy:w[1]-f.y,moved:false};} else drag={mode:'newFix',w}; updateFixPanel(); break; }
     case 'select': { if((e.shiftKey||e.ctrlKey||e.metaKey||areaAdd)&&e.button!==2&&toggleAreaAt(w)){ drag={mode:'none'}; updatePanels(); break; }
       if(multi){ const b=multiBox(), tol=6/view.z; if(b&&w[0]>=b[0]-tol&&w[0]<=b[2]+tol&&w[1]>=b[1]-tol&&w[1]<=b[3]+tol){ drag=startMultiMove(w); break; } }
-      const t=hitText(w), f=t?null:hitFix(w), dm=(t||f)?null:hitDim(w); clearSel(); drag={mode:'none'};
+      const t=hitText(w), f=t?null:hitFix(w), dm=(t||f)?null:hitDim(w), ar=(t||f||dm)?null:hitArrow(w); clearSel(); drag={mode:'none'};
       if(t){ selText=t; drag={mode:'moveText',t,ox:w[0]-t.x,oy:w[1]-t.y,moved:false}; }
       else if(f){ selFix=f; drag={mode:'moveFix',f,ox:w[0]-f.x,oy:w[1]-f.y,moved:false}; }
       else if(dm) selDim=dm;
+      else if(ar){ selArrow=ar; drag={mode:'moveArrow',a:ar,w0:w,pts0:ar.pts.map(q=>[...q]),moved:false}; }
       else { const seg=nearestSeg(w); if(seg){ if(seg.o){ selOpenPt=midOf(seg); drag=startOpenDrag('moveOpen',null,w); } else selWallPt=midOf(seg); } else drag={mode:'marquee',a:w,b:w,sx:e.offsetX,sy:e.offsetY,moved:false}; }
       updatePanels(); break; }
   }
@@ -1353,10 +1395,11 @@ cv.addEventListener('pointermove',e=>{
   const w=toWorld(e.offsetX,e.offsetY);
   hover=null;
   altDown=e.altKey; shiftDown=e.shiftKey;
-  if(!drag){ const hid=(tool==='select'||tool==='fix'||tool==='door'||tool==='window'||tool==='room')?hitHandle(w):null;
+  if(!drag){ const hid=(tool==='select'||tool==='fix'||tool==='door'||tool==='window'||tool==='room'||(tool==='arrow'&&!arrowDraft))?hitHandle(w):null;
     if(hid){ cv.style.cursor=handleCur(hid); render(); return; }
+    if(tool==='arrow'){ const last=arrowDraft&&arrowDraft[arrowDraft.length-1]; hover={pt:arrowPt(w,last||null)}; }
     if(tool==='wall'||tool==='dim') hover={pt:snapDraw(w)}; else if(tool==='room') hover={pt:snapCorner(w)}; else if(tool==='door'||tool==='window'){const seg=nearestSeg(w); if(seg)hover={range:hoverRangeOn(seg,w)};}
-    const mb=tool==='select'&&multiBox(); cv.style.cursor=mb&&w[0]>=mb[0]&&w[0]<=mb[2]&&w[1]>=mb[1]&&w[1]<=mb[3]?'move':tool==='select'?((hitText(w)||hitFix(w))?'move':(hitDim(w)||nearestSeg(w))?'pointer':'default'):toolCursor(tool);
+    const mb=tool==='select'&&multiBox(); cv.style.cursor=mb&&w[0]>=mb[0]&&w[0]<=mb[2]&&w[1]>=mb[1]&&w[1]<=mb[3]?'move':tool==='select'?((hitText(w)||hitFix(w)||hitArrow(w))?'move':(hitDim(w)||nearestSeg(w))?'pointer':'default'):toolCursor(tool);
     render(); return; }
   switch(drag.mode){
     case 'pan': view.x=drag.vx-(e.offsetX-drag.sx)/view.z; view.y=drag.vy-(e.offsetY-drag.sy)/view.z; break;
@@ -1379,6 +1422,9 @@ cv.addEventListener('pointermove',e=>{
       d.moved=true; $('#fixW').value=f.w; $('#fixH').value=f.h; break; }
     case 'resizeOpen': { const d=drag, t=alongObj(d.L,w), MIN=200; if(d.id==='a') placeOpening(d,Math.min(t,d.b-MIN),d.b); else placeOpening(d,d.a,Math.max(t,d.a+MIN)); break; }
     case 'moveOpen': { const d=drag, dt=along(d.L,w)-d.t0; if(!d.moved&&Math.abs(dt)<4/view.z) break; const na=alongObj(d.L,P(d.L,d.a+dt)); placeOpening(d,na,na+(d.b-d.a)); break; }
+    case 'moveArrow': { const free=isFree(), dx=free?Math.round(w[0]-drag.w0[0]):snapV(w[0]-drag.w0[0]), dy=free?Math.round(w[1]-drag.w0[1]):snapV(w[1]-drag.w0[1]);
+      drag.a.pts=drag.pts0.map(q=>[q[0]+dx,q[1]+dy]); if(dx||dy) drag.moved=true; break; }
+    case 'arrowVert': { const q=altDown?[Math.round(w[0]),Math.round(w[1])]:snapPt(w), pts=drag.a.pts, i=drag.i; if(pts[i][0]!==q[0]||pts[i][1]!==q[1]){ pts[i]=q; drag.moved=true; } break; }
     case 'moveFix': { const [cw,ch]=FIX[drag.f.type].center?fixDims(drag.f).map(q=>q/2):[0,0], nx=objSnap(w[0]-drag.ox+cw)-cw, ny=objSnap(w[1]-drag.oy+ch)-ch; if(nx!==drag.f.x||ny!==drag.f.y){drag.f.x=nx;drag.f.y=ny;drag.moved=true;} break; }
   }
   render();
@@ -1412,6 +1458,7 @@ function endPointer(e){
     case 'resizeFix': if(d.moved) commit(); updateFixPanel(); break;
     case 'resizeText': if(d.moved) commit(); updateTextPanel(); break;
     case 'roomVert': if(d.moved) commit(); updateRoomPanel(); break;
+    case 'moveArrow': case 'arrowVert': if(d.moved) commit(); updatePanels(); break;
     case 'resizeOpen': case 'moveOpen': if(d.moved) commit(); updatePanels(); break;
   }
   render();
@@ -1434,8 +1481,10 @@ window.addEventListener('keydown',e=>{
   if((e.ctrlKey||e.metaKey)&&!e.shiftKey&&(e.key==='c'||e.key==='C')){ if(copySel()) e.preventDefault(); return; }
   if((e.ctrlKey||e.metaKey)&&!e.shiftKey&&(e.key==='v'||e.key==='V')){ if(pasteClip()) e.preventDefault(); return; }
   if(e.ctrlKey||e.metaKey||e.altKey) return;
-  const tools=['wall','erase','door','window','room','fix','text','pan','dim']; const n=parseInt(e.key); if(n>=1&&n<=9){setTool(tools[n-1]);return;}
+  const tools=['wall','erase','door','window','room','fix','text','pan','dim']; const n=parseInt(e.key); if(n>=1&&n<=9){setTool(tools[n-1]);return;} if(e.key==='0'){ setTool('arrow'); return; }
   if(e.key==='v'||e.key==='V'){setTool('select');return;}
+  if(tool==='arrow'&&arrowDraft){ if(e.key==='Enter'){ finishArrowDraft(); return; } if(e.key==='Escape'){ arrowDraft=null; updateArrowPanel(); setStatus(hintOf('arrow')); render(); return; }
+    if(e.key==='Backspace'||e.key==='Delete'){ e.preventDefault(); arrowDraft.pop(); if(!arrowDraft.length) arrowDraft=null; updateArrowPanel(); render(); return; } }
   if(tool==='room'&&roomDraft){ if(e.key==='Enter'){ finishRoomDraft(); return; } if(e.key==='Escape'){ roomDraft=null; updateRoomPanel(); setStatus(hintOf('room')); render(); return; }
     if(e.key==='Backspace'||e.key==='Delete'){ e.preventDefault(); roomDraft.pop(); if(!roomDraft.length) roomDraft=null; updateRoomPanel(); render(); return; } }
   if(e.key==='Escape'){ if(exportPick){ setExportPick(false); return; } closeExportMenu(); clearSel();updatePanels();render();}
@@ -1450,7 +1499,7 @@ window.addEventListener('keyup',e=>{if(e.code==='Space')space=false;});
 
 // ===== ツール・パネル =====
 const HINTS={select:'クリックで選択、何もない所からドラッグで囲むとまとめて選択。設備・文字・建具はドラッグで移動、四角／丸のつまみを引いてサイズ変更、Deleteで削除、Escで解除',erase:'ドア・窓をクリックで壁に戻す。壁はクリックで1グリッド分、なぞった範囲が消える。文字・設備・寸法線はクリックで削除',room:'クリック：壁で囲まれた場所を部屋に／ドラッグ：四角で部屋を作る（壁が無くても可）',fix:'クリックで配置（パターンは右の欄で選択）。ドラッグで移動、Rで回転、Mで反転、Ctrl+Dで複製',text:'クリックで文字を置き、パネルの欄で内容を編集。文字をクリックで選択、ドラッグで移動',dim:'ドラッグで寸法線を引きます（両端はグリッドに吸着）',pan:'ドラッグで移動、ホイールで拡大縮小（どのツールでも右ドラッグで移動できます）'};
-function hintOf(t){ if(t==='room'&&roomMode==='poly') return '部屋の角を順にクリック。最初の角をクリック（または Enter）で完成'; if(t==='wall') return 'ドラッグで壁を引きます（'+ANGLE_MODES[state.angle]+'）。Shift で縦横にまっすぐ、緑の丸は既存の壁に吸着。既存の壁をクリックで厚さを変更'; if(t==='door'||t==='window'){ const o=OPEN[curSub()]; return o.name+'（標準幅 '+o.w+'mm）：壁をクリックで配置、ドラッグで幅指定。配置済みをクリックで選択'; } return HINTS[t]; }
+function hintOf(t){ if(t==='arrow') return '矢印の点を順にクリック。最後の点をもう一度クリック（または Enter）で完成'; if(t==='room'&&roomMode==='poly') return '部屋の角を順にクリック。最初の角をクリック（または Enter）で完成'; if(t==='wall') return 'ドラッグで壁を引きます（'+ANGLE_MODES[state.angle]+'）。Shift で縦横にまっすぐ、緑の丸は既存の壁に吸着。既存の壁をクリックで厚さを変更'; if(t==='door'||t==='window'){ const o=OPEN[curSub()]; return o.name+'（標準幅 '+o.w+'mm）：壁をクリックで配置、ドラッグで幅指定。配置済みをクリックで選択'; } return HINTS[t]; }
 let statusMsg='';
 // スマホ幅で設定欄をたたむ（どの端末でも開閉の状態を覚える。PC 幅では常に表示）
 const PANEL_KEY='madori-panel-hidden';
@@ -1458,7 +1507,7 @@ function setPanelHidden(h,init){ document.body.classList.toggle('panelHidden',h)
 $('#panelBar').onclick=()=>setPanelHidden(!document.body.classList.contains('panelHidden'));
 { let h=false; try{ h=localStorage.getItem(PANEL_KEY)==='1'; }catch(e){} setPanelHidden(h,true); }
 function setStatus(msg){ statusMsg=msg; $('#status').textContent='グリッド '+gridLabel()+(state.freePlace?'（設備・建具は自由配置）':'')+' ｜ '+msg; }
-function setTool(t){ if(t!=='room') roomDraft=null; tool=t; if(t!=='select'){ if(t!=='door'&&t!=='window') selOpenPt=null; if(t!=='text') selText=null; selWallPt=null; selDim=null; }
+function setTool(t){ if(t!=='room') roomDraft=null; if(t!=='arrow') arrowDraft=null; tool=t; if(t!=='select'){ if(t!=='door'&&t!=='window') selOpenPt=null; if(t!=='text') selText=null; if(t!=='arrow') selArrow=null; selWallPt=null; selDim=null; }
   $$('#rail button').forEach(b=>b.classList.toggle('on',b.dataset.tool===t)); $$('#panel section').forEach(s=>s.classList.toggle('on',s.dataset.for===t)); setStatus(hintOf(t)); cv.style.cursor=toolCursor(t); hover=null; updatePanels(); render(); }
 $$('#rail button').forEach(b=>b.onclick=()=>setTool(b.dataset.tool));
 $$('#thickSeg button').forEach(b=>b.onclick=()=>{state.thick=b.dataset.th; $$('#thickSeg button').forEach(x=>x.classList.toggle('on',x===b)); save(); render();});
@@ -1595,6 +1644,7 @@ function updateFixPanel(){ const f=selFix&&state.fixtures.includes(selFix)?selFi
   const vc=$('#fixSelVars'); vc.innerHTML=''; vc.style.display=d.vars.length>1?'':'none';
   if(d.vars.length>1) for(const x of d.vars){ const b=iconChip(fixIcon(x,40,30),x.name); b.classList.toggle('on',x===v); b.onclick=()=>{ f.v=x.id; resizeKeepCenter(f,x.w,x.h); commit(); updateFixPanel(); }; vc.appendChild(b); }
   const isSt=f.type==='stairs'; $('#stairOpts').style.display=isSt?'':'none';
+  if(isSt) $('#stairArrow').checked=!f.noArrow;
   if(isSt){ const sp=stairPlan(v.id,w,h,f), two=sp.flights.length>1, act=document.activeElement, put=(id,val)=>{ if(act!==$(id)) $(id).value=val; };
     const P=STAIR_PIECE[v.id]; $('#stairSteps').min=P?P.min:2; $('#stairSteps').max=P?P.max:40; $('#stairFloorRow').style.display=(P&&v.id!=='spiral')?'none':'';
     $('#stairTotalRow').style.display=two?'none':''; $('#stairSect').style.display=two?'':'none'; $('#stairTurnLabel').textContent=v.id==='L'?'曲がり部分':'折り返し部分';
@@ -1615,6 +1665,7 @@ $$('#burnerSeg button').forEach(b=>b.onclick=()=>{ if(selFix){ selFix.burners=+b
 $('#fixDw').onchange=e=>{ if(selFix){ selFix.dw=e.target.checked; commit(); } };
 $('#stairSteps').onchange=e=>{ if(!selFix) return; const P=STAIR_PIECE[fixVar(selFix).id], n=clamp(Math.round(+e.target.value||0),P?P.min:2,P?P.max:40); selFix.steps=n; commit(); e.target.blur(); updateFixPanel(); };
 $('#stairFloorH').onchange=e=>{ if(!selFix) return; selFix.floorH=clamp(Math.round((+e.target.value||2900)/10)*10,1000,6000); commit(); e.target.blur(); updateFixPanel(); };
+$('#stairArrow').onchange=e=>{ if(!selFix) return; if(e.target.checked) delete selFix.noArrow; else selFix.noArrow=true; commit(); e.target.blur(); };
 $('#stairAuto').onclick=()=>{ if(!selFix) return; for(const k of ['steps','stepsA','stepsTurn','stepsB']) delete selFix[k]; commit(); updateFixPanel(); };
 for(const [id,key,max] of [['#stairA','stepsA',30],['#stairTurn','stepsTurn',6],['#stairB','stepsB',30]]) $(id).onchange=e=>{ if(!selFix) return;
   const v=fixVar(selFix), [w,h]=fixSize(selFix), sp=stairPlan(v.id,w,h,selFix);   // 未指定の部分は今の値で埋めてから、変えた部分だけ差し替える
@@ -1635,12 +1686,17 @@ $$('#wallThSeg button').forEach(b=>b.onclick=()=>{ const s=selWall(); if(s&&setW
 $('#wallDel').onclick=()=>doAction('del');
 function updateDimPanel(){ const d=tool==='select'&&selDim&&state.dims.includes(selDim)?selDim:null; if(!d) selDim=null; $('#dimSel').style.display=d?'':'none'; if(!d) return; $('#dimLen').textContent=fmtDim(Math.hypot(d.x2-d.x1,d.y2-d.y1)); }
 $('#dimDel').onclick=()=>doAction('del');
+function updateArrowPanel(){ $('#arrowDraftBox').style.display=arrowDraft?'':'none'; const on=visKind()==='arrow'; $('#arrowSel').style.display=on?'':'none'; }
+$('#arrowRev').onclick=()=>doAction('rev'); $('#arrowDel').onclick=()=>doAction('del');
+$('#arrowDraftDone').onclick=finishArrowDraft;
+$('#arrowDraftBack').onclick=()=>{ if(!arrowDraft) return; arrowDraft.pop(); if(!arrowDraft.length) arrowDraft=null; updateArrowPanel(); render(); };
+$('#arrowDraftCancel').onclick=()=>{ arrowDraft=null; updateArrowPanel(); setStatus(hintOf('arrow')); render(); };
 function updateMultiPanel(){ const on=visKind()==='multi'; $('#multiSel').style.display=on?'':'none'; if(!on) return;
-  const parts=[['設備',multi.fix.length],['文字',multi.text.length],['寸法線',multi.dim.length],['壁・建具',multiSegs().length]].filter(x=>x[1]).map(x=>x[0]+' '+x[1]);
+  const parts=[['設備',multi.fix.length],['文字',multi.text.length],['寸法線',multi.dim.length],['矢印',(multi.arrow||[]).length],['壁・建具',multiSegs().length]].filter(x=>x[1]).map(x=>x[0]+' '+x[1]);
   $('#multiName').textContent='選択中：'+multiCount()+' 個（'+parts.join('・')+'）';
   const rs=areaRegions(), ma=$('#multiArea'); ma.style.display=rs.length?'':'none'; if(rs.length) ma.textContent='囲んだ部屋 '+rs.length+' 室：'+m2Tsubo(rs.reduce((a,r)=>a+r.area,0)); }
 $('#multiDup').onclick=()=>doAction('dup'); $('#multiDel').onclick=()=>doAction('del'); $('#multiClear').onclick=()=>{ clearSel(); updatePanels(); render(); };
-function updatePanels(){ updateMultiPanel(); updateAreaPanel(); updateFixPanel(); updateTextPanel(); updateOpenPanel(); updateRoomPanel(); updateWallPanel(); updateDimPanel(); $('#selNone').style.display=visKind()?'none':''; }
+function updatePanels(){ updateMultiPanel(); updateAreaPanel(); updateFixPanel(); updateTextPanel(); updateOpenPanel(); updateRoomPanel(); updateWallPanel(); updateDimPanel(); updateArrowPanel(); $('#selNone').style.display=visKind()?'none':''; }
 
 // ===== 選択中のものへの操作 =====
 // いま画面で選択として見えているもの（ツールと対応しないものは対象にしない）
@@ -1650,6 +1706,7 @@ function visKind(){
   if(selFix&&(tool==='select'||tool==='fix')) return 'fix';
   if(selText&&(tool==='select'||tool==='text')) return 'text';
   if(tool==='select'&&selDim) return 'dim';
+  if((tool==='select'||tool==='arrow')&&selArrow&&state.arrows.includes(selArrow)) return 'arrow';
   if((tool==='select'||tool==='door'||tool==='window')&&selOpen()) return 'open';
   if(tool==='select'&&selWall()) return 'wall';
   if(tool==='select'&&selRoom) return 'room';
@@ -1672,11 +1729,12 @@ function zOrder(a){ const k=visKind(); if(k!=='fix'&&k!=='text') return; const a
 document.querySelectorAll('[data-z]').forEach(b=>{ b.onclick=()=>{ doAction(b.dataset.z); b.blur(); }; });
 function deleteSel(){ const k=visKind(); if(!k||k==='area') return;   // 面積の合計は部屋を選んでいるだけなので消さない
   if(k==='multi'){ const sg=new Set(multiSegs()); state.walls=state.walls.filter(g=>!sg.has(g)); normalize();
-    state.fixtures=state.fixtures.filter(f=>!multi.fix.includes(f)); state.texts=state.texts.filter(t=>!multi.text.includes(t)); state.dims=state.dims.filter(d=>!multi.dim.includes(d)); state.rooms=state.rooms.filter(q=>!multi.room.includes(q));
+    state.fixtures=state.fixtures.filter(f=>!multi.fix.includes(f)); state.texts=state.texts.filter(t=>!multi.text.includes(t)); state.dims=state.dims.filter(d=>!multi.dim.includes(d)); state.arrows=state.arrows.filter(a=>!(multi.arrow||[]).includes(a)); state.rooms=state.rooms.filter(q=>!multi.room.includes(q));
     multi=null; commit(); }
   if(k==='fix'){ state.fixtures.splice(state.fixtures.indexOf(selFix),1); selFix=null; commit(); }
   else if(k==='text'){ state.texts.splice(state.texts.indexOf(selText),1); selText=null; commit(); }
   else if(k==='dim'){ state.dims.splice(state.dims.indexOf(selDim),1); selDim=null; commit(); }
+  else if(k==='arrow'){ state.arrows.splice(state.arrows.indexOf(selArrow),1); selArrow=null; commit(); }
   else if(k==='open') $('#openDel').click();
   else if(k==='wall'){ const sg=selWall(), L=lineOf(sg); replaceRange(L,L.a,L.b,REMOVE); selWallPt=null; commit(); }
   else if(k==='room') $('#roomDel').click();
@@ -1690,22 +1748,24 @@ function doAction(a){ const k=visKind();
   else if(a==='vert'&&k==='text') setTextVert(!selText.vert);
   else if(a==='edit'&&k==='text'){ const i=$('#textInput'); i.focus(); i.select(); }
   else if(a==='flip'&&k==='open') $('#openFlip').click();
+  else if(a==='rev'&&k==='arrow'){ selArrow.pts.reverse(); commit(); }
   else if(a==='add'&&k==='area') areaAdd=!areaAdd;
   else if(a==='clear') clearSel();
   updatePanels(); render(); }
 // 選んだものの近くに出す操作ボタン
 const FB_ICON={rot:'<path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/>',mir:'<path d="M12 3v18"/><path d="M9 7l-5 5 5 5z"/><path d="M15 7l5 5-5 5z"/>',
   dup:'<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M4 16V6a2 2 0 0 1 2-2h10"/>',del:'<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
-  edit:'<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M14 6l4 4"/>',add:'<path d="M12 5v14M5 12h14"/>',clear:'<path d="M6 6l12 12M18 6L6 18"/>',flip:'<path d="M4 12h16M8 8l-4 4 4 4M16 8l4 4-4 4"/>',
+  edit:'<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M14 6l4 4"/>',add:'<path d="M12 5v14M5 12h14"/>',clear:'<path d="M6 6l12 12M18 6L6 18"/>',flip:'<path d="M4 12h16M8 8l-4 4 4 4M16 8l4 4-4 4"/>',rev:'<path d="M4 8h14M14 4l4 4-4 4"/><path d="M20 16H6M10 12l-4 4 4 4"/>',
   vert:'<path d="M7 4h10M12 4v8"/><path d="M12 12v8M8.5 16.5L12 20l3.5-3.5"/>',up:'<rect x="3" y="10" width="12" height="11" rx="1.5"/><path d="M19 14V4M15.5 7.5L19 4l3.5 3.5"/>',down:'<rect x="3" y="3" width="12" height="11" rx="1.5"/><path d="M19 10v10M15.5 16.5L19 20l3.5-3.5"/>'};
-const FB_TITLE={rot:'回転（R）',mir:'左右反転（M）',dup:'複製（Ctrl+D）',del:'削除（Delete）',edit:'文字を編集',vert:'縦書き／横書き',flip:'向きを変える',add:'タップで部屋を足す／外す',clear:'選択を解除（Esc）',up:'前面へ（]）',down:'背面へ（[）'};
-const FB_ACTS={multi:['dup','del'],fix:['rot','mir','up','down','dup','del'],text:['edit','vert','dup','up','down','del'],open:['flip','del'],wall:['del'],dim:['del'],room:['del'],area:['add','clear']};
+const FB_TITLE={rot:'回転（R）',mir:'左右反転（M）',dup:'複製（Ctrl+D）',del:'削除（Delete）',edit:'文字を編集',vert:'縦書き／横書き',flip:'向きを変える',rev:'矢印の向きを反対に',add:'タップで部屋を足す／外す',clear:'選択を解除（Esc）',up:'前面へ（]）',down:'背面へ（[）'};
+const FB_ACTS={multi:['dup','del'],fix:['rot','mir','up','down','dup','del'],text:['edit','vert','dup','up','down','del'],open:['flip','del'],wall:['del'],dim:['del'],arrow:['rev','del'],room:['del'],area:['add','clear']};
 let fbKind=null;
 function selScreenBox(k){ const z=view.z, S=(x,y)=>[(x-view.x)*z,(y-view.y)*z];
   const segBox=g=>{ const [ax,ay]=S(g.x1,g.y1),[bx,by]=S(g.x2,g.y2); return [Math.min(ax,bx),Math.min(ay,by)-8,Math.max(ax,bx),Math.max(ay,by)+8]; };
   if(k==='multi'){ const b=multiBox(); if(!b) return null; const [ax,ay]=S(b[0],b[1]),[bx,by]=S(b[2],b[3]); return [ax-8,ay-8,bx+8,by+8]; }
   if(k==='fix'){ const [fw,fh]=fixDims(selFix), [x,y]=S(selFix.x,selFix.y); return [x,y,x+fw*z,y+fh*z]; }
   if(k==='text'){ const b=textBox(selText), [x,y]=S(b[0],b[1]), [x2,y2]=S(b[2],b[3]); return [x,y,x2,y2]; }
+  if(k==='arrow'){ const b=arrowBox(selArrow), [x,y]=S(b[0],b[1]), [x2,y2]=S(b[2],b[3]); return [x-8,y-8,x2+8,y2+8]; }
   if(k==='dim') return segBox(selDim); if(k==='open') return segBox(selOpen()); if(k==='wall') return segBox(selWall());
   if(k==='area'){ const rs=areaRegions(); if(!rs.length) return null; let x1=Infinity,y1=Infinity,x2=-Infinity,y2=-Infinity; for(const r of rs) for(const [px,py] of r.poly){ const [sx,sy]=S(px,py); x1=Math.min(x1,sx); y1=Math.min(y1,sy); x2=Math.max(x2,sx); y2=Math.max(y2,sy); } return [x1,y1,x2,y2]; }
   if(k==='room'){ const r=shapeOf(selRoom); if(!r) return null; let x1=Infinity,y1=Infinity,x2=-Infinity,y2=-Infinity; for(const [px,py] of r.poly){ const [sx,sy]=S(px,py); x1=Math.min(x1,sx); y1=Math.min(y1,sy); x2=Math.max(x2,sx); y2=Math.max(y2,sy); } return [x1,y1,x2,y2]; }
@@ -1728,11 +1788,12 @@ function bbox(){ let x1=Infinity,y1=Infinity,x2=-Infinity,y2=-Infinity, any=fals
   for(const f of state.fixtures){ if(!FIX[f.type]) continue; const [fw,fh]=fixDims(f); ext(f.x,f.y,f.x+fw,f.y+fh);}
   for(const t of state.texts){ if(t.vert){ const b=textBox(t); ext(b[0],b[1],b[2],b[3]); } else ext(t.x,t.y,t.x+t.text.length*t.size*1.05,t.y+t.size*1.3); }
   for(const rm of state.rooms) if(rm.poly) for(const [x,y] of rm.poly) ext(x,y,x,y);
+  for(const a of state.arrows) for(const [x,y] of a.pts) ext(x-150,y-150,x+150,y+150);
   for(const d of state.dims){ ext(Math.min(d.x1,d.x2)-200,Math.min(d.y1,d.y2)-300,Math.max(d.x1,d.x2)+200,Math.max(d.y1,d.y2)+100); }
   return any?{x1,y1,x2,y2}:null; }
 function fitView(){ const b=bbox()||{x1:AREA_W/2-16*MOD,y1:AREA_H/2-12*MOD,x2:AREA_W/2+16*MOD,y2:AREA_H/2+12*MOD}; const m=2*MOD; const z=clamp(Math.min(W/(b.x2-b.x1+2*m),(H-30)/(b.y2-b.y1+2*m)),ZMIN,60/MOD); view.z=z; view.x=(b.x1+b.x2)/2-W/2/z; view.y=(b.y1+b.y2)/2-H/2/z; render(); }
 $('#zoomFit').onclick=fitView;
-$('#clearAll').onclick=()=>{ if(!confirm('図面を白紙にします。よろしいですか？')) return; state.walls=[]; state.texts=[]; state.fixtures=[]; state.rooms=[]; state.dims=[]; fileCur={handle:null,name:null,saved:null}; clearSel(); updatePanels(); commit(); };
+$('#clearAll').onclick=()=>{ if(!confirm('図面を白紙にします。よろしいですか？')) return; state.walls=[]; state.texts=[]; state.fixtures=[]; state.rooms=[]; state.dims=[]; state.arrows=[]; fileCur={handle:null,name:null,saved:null}; clearSel(); updatePanels(); commit(); };
 // ===== ファイルの読込・保存 =====
 // Chrome / Edge（パソコン）は File System Access API で、読み込んだファイルへの上書き保存と、保存場所・名前を選んでの保存ができる。
 // それ以外（Safari・Firefox・スマホ）はダウンロードで保存する（保存場所はブラウザのダウンロード設定に従う）
