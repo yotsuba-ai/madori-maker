@@ -180,6 +180,11 @@ kbd{font:11px ui-monospace,monospace;background:#F0F2F5;border:1px solid var(--l
       <div class="seg" id="thickSeg">
         <button data-th="thin">薄い</button><button data-th="normal" class="on">普通</button><button data-th="thick">厚い</button><button data-th="line" title="壁の無い所を部屋として区切る線">区切り線</button>
       </div>
+      <h3>外構の線</h3>
+      <div class="seg" id="thickSegExt">
+        <button data-th="site" title="一点鎖線">敷地境界線</button><button data-th="fence" title="細い線と柱の丸">フェンス</button><button data-th="block" title="厚さ 120mm の二重線">塀</button>
+      </div>
+      <p class="hint">外構の線も壁と同じように引けます。敷地境界線で囲んだ庭や駐車場は、部屋ツールで名前や地面の色を付けられます。</p>
       <h3>角度</h3>
       <div class="seg" id="angleSeg">
         <button data-ang="ortho" class="on">縦横のみ</button><button data-ang="diag">45°</button><button data-ang="free">自由</button>
@@ -336,6 +341,9 @@ kbd{font:11px ui-monospace,monospace;background:#F0F2F5;border:1px solid var(--l
         <label class="row">名前 <input type="text" id="roomName" placeholder="LDK など"></label>
         <div class="chips" id="roomPresets"></div>
         <div class="swatches" id="swatches"></div>
+        <h3>外構（地面）</h3>
+        <div class="chips" id="roomPresetsExt"></div>
+        <div class="swatches" id="swatchesExt"></div>
         <label class="row">その他の色 <input type="color" id="roomColorPick"></label>
         <label class="row">面積の表示
           <select id="roomArea"><option value="jo">帖</option><option value="m2">㎡</option><option value="both">両方</option><option value="none">なし</option></select>
@@ -353,6 +361,7 @@ kbd{font:11px ui-monospace,monospace;background:#F0F2F5;border:1px solid var(--l
       <div id="wallSel" class="selbox" style="display:none">
         <h3>選択中：壁 <span id="wallLen"></span></h3>
         <div class="seg" id="wallThSeg"><button data-th="thin">薄い</button><button data-th="normal">普通</button><button data-th="thick">厚い</button><button data-th="line">区切り線</button></div>
+        <div class="seg" id="wallThSegExt"><button data-th="site">敷地境界線</button><button data-th="fence">フェンス</button><button data-th="block">塀</button></div>
         <div class="stack"><button id="wallDel" class="danger">この壁を削除</button></div>
       </div>
       <div id="multiSel" class="selbox" style="display:none">
@@ -385,12 +394,17 @@ const AREA_W = 36400, AREA_H = 27300;        // 作図範囲 mm（36.4m × 27.3m
 const GRID_PRESETS = [910, 455, 300, 100, 50, 10];
 const GRID_FRACS = [[2,'1/2'],[4,'1/4'],[8,'1/8']].map(([n,name])=>({g:910/n,name}));   // 910mm の分数。227.5 と 113.75 は 5mm 刻みに丸めず、そのまま持つ
 const GRID_MIN = 10, GRID_MAX = 2000, GRID_STEP = 5;   // 5mm 刻み（455 や 910 も指定できるように）
-const THICK = {thin:65, normal:100, thick:150, line:1};   // 壁厚 mm。line は「区切り線」：壁の無い所を部屋として区切るための線（画面にだけ破線で出し、書き出しには出さない）
+const THICK = {thin:65, normal:100, thick:150, line:1, site:1, fence:1, block:120};   // 壁厚 mm。line は「区切り線」：壁の無い所を部屋として区切るための線（画面にだけ破線で出し、書き出しには出さない）
 const ANGLE_MODES = {ortho:'縦横のみ', diag:'45°まで', free:'自由'};
 const JO_MODULE_M2 = 0.91*1.82;   // 910×1820mm = 1帖（モジュール換算）
 const JO_M2 = 1.62;               // 不動産公正競争規約の換算：1帖 = 1.62㎡
 const ZMIN = 6/MOD, ZMAX = 1.2;   // 拡大率 px/mm
 const STORE_KEY = 'madori-maker-v2', STORE_KEY_V1 = 'madori-maker-v1';
+// 外構の線（壁と同じく線分で持ち、部屋の境界にもなる。書き出しにも出る）：site 敷地境界線（一点鎖線）/ fence フェンス（細線＋柱）/ block 塀（二重線）
+const EXT_LINE = {site:'敷地境界線', fence:'フェンス', block:'塀'};
+// 外構の地面の色（部屋の色の見本に並べる）と名前のプリセット（面積の表示は「なし」で付ける）
+const GROUND = [['#CFE3B4','芝'],['#DADDE1','土間コンクリート'],['#EDE6D6','砂利'],['#C4C8CE','アスファルト'],['#E3D2B8','土'],['#E9D9C9','タイル'],['#CFE6F5','水']];
+const EXT_PRESETS = [['庭','#CFE3B4'],['駐車場','#DADDE1'],['アプローチ','#E9D9C9'],['テラス','#E9D9C9'],['道路','#C4C8CE']];
 const PALETTE = ['#FBEFC9','#DCE9F7','#DDEED3','#D7EEF3','#EDE7DF','#E8E4EC','#F9DCD2','#F4E8C6','#E2EFE8','#E6E9EE','#FFFFFF'];
 const ROOM_PRESETS = [
   ['LDK','#FBEFC9'],['洋室','#DCE9F7'],['和室','#DDEED3'],['キッチン','#F4E8C6'],['浴室','#D7EEF3'],['洗面','#D7EEF3'],
@@ -436,8 +450,8 @@ const newOpening=(t,f)=>{ const o={t,f:f||0,id:newOid()}; if(openPref[t]) o.n=op
 // legacy は、パターン id（v）を持たない旧データを読むときに使うパターン
 const LN=(c,x1,y1,x2,y2)=>{c.beginPath();c.moveTo(x1,y1);c.lineTo(x2,y2);c.stroke();};
 const FIXCOL={
-  color:{line:'#3A4049',thin:'#7D8590',body:'#FFFFFF',top:'#EDEFF2',water:'#D3E9F8',store:'#F1E7D3',wood:'#EAD9BF',cloth:'#DCE4ED',doma:'#E5E1DA',dark:'#5A606A'},
-  mono:{line:'#1E1E1E',thin:'#4A4A4A',body:'#FFFFFF',top:'#FFFFFF',water:'#FFFFFF',store:'#FFFFFF',wood:'#FFFFFF',cloth:'#FFFFFF',doma:'#FFFFFF',dark:'#1E1E1E'},
+  color:{line:'#3A4049',thin:'#7D8590',body:'#FFFFFF',top:'#EDEFF2',water:'#D3E9F8',store:'#F1E7D3',wood:'#EAD9BF',cloth:'#DCE4ED',doma:'#E5E1DA',dark:'#5A606A',green:'#CFE3B4',soil:'#E6D8C0'},
+  mono:{line:'#1E1E1E',thin:'#4A4A4A',body:'#FFFFFF',top:'#FFFFFF',water:'#FFFFFF',store:'#FFFFFF',wood:'#FFFFFF',cloth:'#FFFFFF',doma:'#FFFFFF',dark:'#1E1E1E',green:'#FFFFFF',soil:'#FFFFFF'},
 };
 let FS={lw:1,lt:0.7,px:1,k:FIXCOL.color};   // 描画中の線幅（mm 換算）と色。drawScene と fixIcon が倍率に合わせて設定する
 const fixStyleFor=z=>({lw:1.1/z,lt:0.7/z,px:1/z,k:FIXCOL[state.fixStyle]||FIXCOL.color});
@@ -726,10 +740,62 @@ const FIX = {
       draw(c,w,h){ box(c,0,0,w,h,{fill:INK,noStroke:true}); }},
     {id:'round',name:'丸柱',w:450,h:450,presets:[[300,300],[450,450],[600,600]],
       draw(c,w,h){ oval(c,w/2,h/2,w/2,h/2,{fill:INK,noStroke:true}); }}]},
+  // --- 外構
+  parking:{name:'駐車',cat:'ext',vars:[
+    {id:'car',name:'普通車',w:2500,h:5000,presets:[[2500,5000],[2700,5500],[3000,5500]],draw:(c,w,h)=>{ parkFrame(c,w,h); carAt(c,w,h,1800,4700); }},
+    {id:'kei',name:'軽自動車',w:2200,h:3800,presets:[[2000,3600],[2200,3800],[2500,5000]],draw:(c,w,h)=>{ parkFrame(c,w,h); carAt(c,w,h,1480,3400); }},
+    {id:'frame',name:'枠のみ',w:2500,h:5000,presets:[[2500,5000],[5000,5000],[7500,5000]],draw:(c,w,h)=>parkFrame(c,w,h)}]},
+  bike:{name:'自転車',cat:'ext',vars:[
+    {id:'one',name:'1 台',w:600,h:1800,presets:[[600,1800]],draw:(c,w,h)=>bikeAt(c,0,w,h)},
+    {id:'rack',name:'駐輪場',w:1800,h:1900,presets:[[1200,1900],[1800,1900],[2400,1900]],
+      draw(c,w,h){ box(c,0,0,w,h,{dash:true,thin:true}); const n=Math.max(1,Math.round(w/600)), bw=w/n; for(let i=0;i<n;i++) bikeAt(c,i*bw,bw,h); }}]},
+  plant:{name:'植栽',cat:'ext',vars:[
+    {id:'tree',name:'高木',w:2000,h:2000,presets:[[1500,1500],[2000,2000],[3000,3000]],draw:(c,w,h)=>{ canopy(c,w/2,h/2,Math.min(w,h)/2,10); circ(c,w/2,h/2,Math.min(w,h)*0.05,{fill:'dark',noStroke:true}); }},
+    {id:'shrub',name:'低木',w:900,h:900,presets:[[600,600],[900,900],[1200,1200]],draw:(c,w,h)=>canopy(c,w/2,h/2,Math.min(w,h)/2,7)},
+    {id:'hedge',name:'生け垣',w:2730,h:500,presets:[[1820,500],[2730,500],[3640,600]],
+      draw:(c,w,h)=>hedge(c,w,h)},
+    {id:'bed',name:'花壇',w:1820,h:600,presets:[[910,600],[1820,600],[2730,910]],
+      draw(c,w,h){ box(c,0,0,w,h,{fill:'soil'}); const n=Math.max(1,Math.round(w/450)), r=Math.min(h*0.28,w/n*0.3); for(let i=0;i<n;i++) canopy(c,w*(i+0.5)/n,h/2,r,6); }}]},
+  gate:{name:'門',cat:'ext',vars:[
+    {id:'post',name:'門柱',w:900,h:200,presets:[[600,200],[900,200],[1200,250]],draw(c,w,h){ box(c,0,0,w,h,{fill:'top'}); box(c,w*0.62,h*0.2,Math.min(260,w*0.28),h*0.6,{thin:true}); }},
+    {id:'double',name:'門扉（両開き）',w:1600,h:800,presets:[[1400,700],[1600,800],[2000,1000]],draw:(c,w,h)=>gateLeaves(c,w,h,2)},
+    {id:'single',name:'門扉（片開き）',w:900,h:800,presets:[[800,700],[900,800]],draw:(c,w,h)=>gateLeaves(c,w,h,1)},
+    {id:'slide',name:'伸縮ゲート',w:5000,h:300,presets:[[2500,300],[5000,300],[7500,300]],
+      draw(c,w,h){ const ps=Math.min(120,h*0.5), n=Math.max(4,2*Math.round(w/500)), d=(w-2*ps)/n; pen(c); c.lineJoin='round'; c.beginPath(); c.moveTo(ps,h*0.2); for(let i=1;i<=n;i++) c.lineTo(ps+d*i, i%2?h*0.8:h*0.2); c.stroke();
+        box(c,0,h/2-ps/2,ps,ps,{fill:'dark',noStroke:true}); box(c,w-ps,h/2-ps/2,ps,ps,{fill:'dark',noStroke:true}); }}]},
+  deck:{name:'デッキ',cat:'ext',vars:[
+    {id:'wood',name:'ウッドデッキ',w:2730,h:1820,presets:[[1820,1365],[2730,1820],[3640,1820]],draw(c,w,h){ box(c,0,0,w,h,{fill:'wood'}); for(let y=200;y<h-50;y+=200) line(c,0,y,w,y,{thin:true}); }}]},
+  shed:{name:'物置',cat:'ext',vars:[
+    {id:'std',name:'物置',w:1800,h:900,presets:[[1300,750],[1800,900],[2200,1500]],draw(c,w,h){ box(c,0,0,w,h,{fill:'top'}); line(c,0,0,w,h,{thin:true}); line(c,w,0,0,h,{thin:true}); }}]},
+  tap:{name:'水栓',cat:'ext',vars:[
+    {id:'stand',name:'立水栓',w:400,h:400,presets:[[300,300],[400,400],[500,500]],draw(c,w,h){ box(c,0,0,w,h,{r:Math.min(w,h)*0.15,fill:'body'}); circ(c,w/2,h/2,Math.min(w,h)*0.3,{fill:'water',thin:true}); circ(c,w/2,h*0.18,Math.min(w,h)*0.07,{fill:'dark',noStroke:true}); }}]},
   north:{name:'方位',cat:'other',legacy:'n',vars:[
     {id:'ring',name:'円と矢印',w:600,h:600,presets:[[400,400],[600,600],[900,900]],draw:(c,w,h)=>northMark(c,w,h,false)},
     {id:'n',name:'N付き',w:600,h:600,presets:[[400,400],[600,600],[900,900]],draw:(c,w,h)=>northMark(c,w,h,true)}]},
 };
+// --- 外構の部品
+// 駐車枠：奥（y=0）と左右を実線、手前（出入りする側）は開ける
+function parkFrame(c,w,h){ pen(c); c.beginPath(); c.moveTo(0,h); c.lineTo(0,0); c.lineTo(w,0); c.lineTo(w,h); c.stroke(); }
+// 車（上から見た形。前が y=0 側）。枠の中央に、実寸 cw×ch（枠より大きければ縮める）
+function carAt(c,w,h,cw0,ch0){ const cw=Math.min(cw0,w*0.86), ch=Math.min(ch0,h*0.94), x=(w-cw)/2, y=(h-ch)/2;
+  box(c,x,y,cw,ch,{r:cw*0.22,fill:'body'});
+  box(c,x+cw*0.1,y+ch*0.2,cw*0.8,ch*0.14,{r:cw*0.08,fill:'water',thin:true});     // フロントガラス
+  box(c,x+cw*0.12,y+ch*0.74,cw*0.76,ch*0.09,{r:cw*0.06,fill:'water',thin:true});  // リアガラス
+  line(c,x+cw*0.1,y+ch*0.34,x+cw*0.12,y+ch*0.74,{thin:true}); line(c,x+cw*0.9,y+ch*0.34,x+cw*0.88,y+ch*0.74,{thin:true});
+  box(c,x-cw*0.06,y+ch*0.25,cw*0.06,ch*0.03,{fill:'body',thin:true}); box(c,x+cw,y+ch*0.25,cw*0.06,ch*0.03,{fill:'body',thin:true}); }
+// 自転車（上から見た形）。x から幅 w の中に 1 台
+function bikeAt(c,x,w,h){ const cx=x+w/2, hw=Math.min(w*0.42,260); oval(c,cx,h*0.2,Math.max(12,hw*0.1),h*0.17,{thin:true}); oval(c,cx,h*0.8,Math.max(12,hw*0.1),h*0.17,{thin:true});
+  line(c,cx,h*0.2,cx,h*0.8); line(c,cx-hw,h*0.27,cx+hw,h*0.27); oval(c,cx,h*0.62,hw*0.38,h*0.06,{fill:'dark',noStroke:true}); }
+// 樹木の葉の輪郭（n 個のこぶ）
+function canopy(c,cx,cy,r,n){ const R=r*0.72, rb=r*0.28, d=2*R*Math.sin(Math.PI/n), ph=d<2*rb?Math.acos(d/(2*rb)):0, sp=Math.PI/2+Math.PI/n-ph;
+  c.beginPath(); for(let i=0;i<n;i++){ const a=2*Math.PI*i/n; c.arc(cx+R*Math.cos(a),cy+R*Math.sin(a),rb,a-sp,a+sp); } c.closePath(); paintPath(c,{fill:'green'}); }
+// 生け垣：丸いこぶを横に並べた輪郭
+function hedge(c,w,h){ const rb=Math.min(h,w)/2, n=Math.max(2,Math.ceil((w-2*rb)/(rb*1.5))+1), sp=(w-2*rb)/(n-1), ph=sp<2*rb?Math.acos(sp/(2*rb)):0, X=i=>rb+sp*i, y=h/2;
+  c.beginPath(); for(let i=0;i<n;i++) c.arc(X(i),y,rb,Math.PI+(i?ph:0),2*Math.PI-(i<n-1?ph:0)); for(let i=n-1;i>=0;i--) c.arc(X(i),y,rb,(i<n-1?ph:0),Math.PI-(i?ph:0)); c.closePath(); paintPath(c,{fill:'green'}); }
+// 門扉：両端（片開きは左端）の柱から、手前（y が増える側）へ 90° 開いた扉と軌跡
+function gateLeaves(c,w,h,n){ const ps=90, L=Math.max(100,Math.min((n===2?w/2:w-ps)-ps,h-ps/2-20));
+  for(const sd of (n===2?[0,1]:[0])){ const hx=sd?w-ps/2:ps/2, dir=sd?-1:1; thinPen(c); c.beginPath(); c.arc(hx,ps/2,L,Math.PI/2,sd?Math.PI:0,!sd); c.stroke(); line(c,hx,ps/2,hx,ps/2+L,{bold:true}); }
+  box(c,0,0,ps,ps,{fill:'dark',noStroke:true}); box(c,w-ps,0,ps,ps,{fill:'dark',noStroke:true}); }
 // 玄関土間：塗り＋目地（tile / hatch / plain）。上端の太線が上がり框
 function doma(c,w,h,v){ box(c,0,0,w,h,{fill:'doma',noStroke:true}); c.save(); c.beginPath(); c.rect(0,0,w,h); c.clip();
   if(v==='tile'){ for(let x=300;x<w;x+=300) line(c,x,0,x,h,{thin:true}); for(let y=300;y<h;y+=300) line(c,0,y,w,y,{thin:true}); }
@@ -738,7 +804,7 @@ function doma(c,w,h,v){ box(c,0,0,w,h,{fill:'doma',noStroke:true}); c.save(); c.
 function northMark(c,w,h,withN){ const r=Math.min(w,h)/2, cx=w/2, cy=h/2, t=withN?cy-r*0.15:cy-r*0.8, b=withN?cy+r*0.72:cy+r*0.45; circ(c,cx,cy,r*0.9,{fill:'body'});
   c.beginPath(); c.moveTo(cx,t); c.lineTo(cx+r*0.28,b); c.lineTo(cx,b-(b-t)*0.2); c.lineTo(cx-r*0.28,b); c.closePath(); c.fillStyle=FS.k.line; c.fill();
   if(withN){ c.font=`700 ${r*0.48}px ${FONT}`; c.textAlign='center'; c.textBaseline='middle'; c.fillText('N',cx,cy-r*0.5); } }
-const FIX_CATS=[['water','水回り'],['kitchen','キッチン'],['store','玄関・収納'],['stairs','階段'],['furn','家具'],['struct','柱'],['other','その他']];
+const FIX_CATS=[['water','水回り'],['kitchen','キッチン'],['store','玄関・収納'],['stairs','階段'],['furn','家具'],['struct','柱'],['ext','外構'],['other','その他']];
 const FIX_ALIAS={stairsU:['stairs','U'],stairsL:['stairs','L']};   // 旧版の型 id → [型, パターン]
 const FONT = '"Hiragino Sans","Noto Sans JP","Yu Gothic UI",sans-serif';
 // 文字の字体（文字ごとの font。無し＝標準）。端末に入っているフォントを使う。丸ゴシックの無い端末（Windows で Office 無し など）は標準のゴシックで表示される
@@ -1222,7 +1288,18 @@ function drawScene(c,z,ox,oy,opt){
   for(const f of state.fixtures) if(FIX[f.type]&&!FIX[f.type].front) drawFix(f);
   // 壁（線分ごとの厚さ。角が欠けないよう square cap）
   c.strokeStyle='#1B1B1B'; c.lineCap='square';
-  for(const s of state.walls){ if(s.o||s.th==='line') continue; const [ax,ay]=S(s.x1,s.y1),[bx,by]=S(s.x2,s.y2); c.lineWidth=(THICK[s.th]||THICK.normal)*z; c.beginPath();c.moveTo(ax,ay);c.lineTo(bx,by);c.stroke(); }
+  for(const s of state.walls){ if(s.o||s.th==='line'||EXT_LINE[s.th]) continue; const [ax,ay]=S(s.x1,s.y1),[bx,by]=S(s.x2,s.y2); c.lineWidth=(THICK[s.th]||THICK.normal)*z; c.beginPath();c.moveTo(ax,ay);c.lineTo(bx,by);c.stroke(); }
+  // 外構の線。塀は外側を全部描いてから内側を抜く（角がつながるように 2 回に分ける）
+  { const ext=state.walls.filter(g=>!g.o&&EXT_LINE[g.th]), seg=g=>{ const [ax,ay]=S(g.x1,g.y1),[bx,by]=S(g.x2,g.y2); c.beginPath(); c.moveTo(ax,ay); c.lineTo(bx,by); c.stroke(); return [ax,ay,bx,by]; }, k=z*MOD;
+    c.save(); c.strokeStyle=INK; c.setLineDash([]);
+    const bw=THICK.block*z, bl=Math.max(1,z*18);
+    c.lineCap='square'; c.lineWidth=bw; for(const g of ext) if(g.th==='block') seg(g);
+    if(bw>2*bl+0.5){ c.strokeStyle=opt.bg||'#FBFBF8'; c.lineWidth=bw-2*bl; for(const g of ext) if(g.th==='block') seg(g); c.strokeStyle=INK; }
+    c.lineCap='butt';
+    for(const g of ext){ if(g.th==='site'){ c.lineWidth=Math.max(1.2,z*25); c.setLineDash([k*0.55,k*0.13,k*0.07,k*0.13]); seg(g); c.setLineDash([]); }
+      else if(g.th==='fence'){ c.lineWidth=Math.max(1,z*20); const [ax,ay,bx,by]=seg(g), n=Math.max(1,Math.round(Math.hypot(g.x2-g.x1,g.y2-g.y1)/1820)), r=Math.max(1.6,z*45); c.fillStyle=INK;
+        for(let q=0;q<=n;q++){ c.beginPath(); c.arc(ax+(bx-ax)*q/n,ay+(by-ay)*q/n,r,0,7); c.fill(); } } }
+    c.restore(); c.strokeStyle='#1B1B1B'; c.lineCap='square'; }
   if(opt.ui){ c.save(); c.strokeStyle='#6F84A3'; c.lineWidth=1.5; c.lineCap='butt'; c.setLineDash([6,4]);
     for(const s of state.walls){ if(s.o||s.th!=='line') continue; const [ax,ay]=S(s.x1,s.y1),[bx,by]=S(s.x2,s.y2); c.beginPath();c.moveTo(ax,ay);c.lineTo(bx,by);c.stroke(); }
     c.restore(); }
@@ -1557,7 +1634,7 @@ function setStatus(msg){ statusMsg=msg; $('#status').textContent='グリッド '
 function setTool(t){ if(t!=='room') roomDraft=null; if(t!=='arrow') arrowDraft=null; tool=t; if(t!=='select'){ if(t!=='door'&&t!=='window') selOpenPt=null; if(t!=='text') selText=null; if(t!=='arrow') selArrow=null; selWallPt=null; selDim=null; }
   $$('#rail button').forEach(b=>b.classList.toggle('on',b.dataset.tool===t)); $$('#panel section').forEach(s=>s.classList.toggle('on',s.dataset.for===t)); setStatus(hintOf(t)); cv.style.cursor=toolCursor(t); hover=null; updatePanels(); render(); }
 $$('#rail button').forEach(b=>b.onclick=()=>setTool(b.dataset.tool));
-$$('#thickSeg button').forEach(b=>b.onclick=()=>{state.thick=b.dataset.th; $$('#thickSeg button').forEach(x=>x.classList.toggle('on',x===b)); save(); render();});
+$$('#thickSeg button, #thickSegExt button').forEach(b=>b.onclick=()=>{state.thick=b.dataset.th; $$('#thickSeg button, #thickSegExt button').forEach(x=>x.classList.toggle('on',x===b)); save(); render();});
 $$('#angleSeg button').forEach(b=>b.onclick=()=>{state.angle=b.dataset.ang; $$('#angleSeg button').forEach(x=>x.classList.toggle('on',x===b)); setStatus(hintOf(tool)); save();});
 // 文字の大きさ（文字の高さ mm、100〜2000）。スライダーは動かしている間も反映し、離したときに履歴に残す
 const TS_MIN=100, TS_MAX=2000, tsClamp=v=>clamp(Math.round((+v||410)/10)*10,TS_MIN,TS_MAX);
@@ -1646,7 +1723,7 @@ function selectRoomAt(w){ const ms=shapeAt(w); if(ms&&ms.manual){ selRoom=ms.pro
 function updateRoomPanel(){ $('#roomDraftBox').style.display=roomDraft?'':'none'; const on=!!selRoom; $('#roomNone').style.display=on?'none':''; $('#roomSel').style.display=on&&(tool==='room'||tool==='select')?'':'none'; if(!on) return;
   { const r=shapeOf(selRoom); $('#roomM2').textContent=r?'面積 '+m2Tsubo(r.area)+'・'+areaText(r.area,'jo')+(r.manual?'（手で作った部屋）':''):''; }
   $('#roomAddArea').style.display=tool==='select'?'':'none';
-  $('#roomName').value=selRoom.name||''; $('#roomArea').value=selRoom.area||'jo'; $$('#swatches button').forEach(b=>b.classList.toggle('on',(b.dataset.c||null)===(selRoom.color||null))); if(selRoom.color) $('#roomColorPick').value=selRoom.color; }
+  $('#roomName').value=selRoom.name||''; $('#roomArea').value=selRoom.area||'jo'; $$('#swatches button, #swatchesExt button').forEach(b=>b.classList.toggle('on',(b.dataset.c||null)===(selRoom.color||null))); if(selRoom.color) $('#roomColorPick').value=selRoom.color; }
 $('#roomName').oninput=e=>{ if(selRoom){selRoom.name=e.target.value; render();} };
 $('#roomName').onchange=()=>{ if(selRoom) commit(); };
 $('#roomArea').onchange=e=>{ if(selRoom){selRoom.area=e.target.value; commit();} };
@@ -1671,6 +1748,8 @@ $('#roomDel').onclick=()=>{ if(!selRoom) return; state.rooms.splice(state.rooms.
 for(const [n,c] of ROOM_PRESETS){ const b=document.createElement('button'); b.textContent=n; b.onclick=()=>{ if(!selRoom) return; selRoom.name=n; selRoom.color=c; updateRoomPanel(); commit(); }; $('#roomPresets').appendChild(b); }
 for(const c of [null,...PALETTE]){ const b=document.createElement('button'); if(c){b.style.background=c;b.dataset.c=c;b.title=c;} else {b.className='none';b.title='塗りなし';} b.onclick=()=>{ if(!selRoom) return; selRoom.color=c; updateRoomPanel(); commit(); }; $('#swatches').appendChild(b); }
 
+for(const [n,c] of EXT_PRESETS){ const b=document.createElement('button'); b.textContent=n; b.onclick=()=>{ if(!selRoom) return; selRoom.name=n; selRoom.color=c; selRoom.area='none'; updateRoomPanel(); commit(); }; $('#roomPresetsExt').appendChild(b); }
+for(const [c,n] of GROUND){ const b=document.createElement('button'); b.style.background=c; b.dataset.c=c; b.title=n; b.onclick=()=>{ if(!selRoom) return; selRoom.color=c; updateRoomPanel(); commit(); }; $('#swatchesExt').appendChild(b); }
 // 設備・家具
 // アイコン付きのチップ
 function iconChip(icon,name){ const b=document.createElement('button'); b.appendChild(icon); const sp=document.createElement('span'); sp.textContent=name; b.appendChild(sp); return b; }
@@ -1731,8 +1810,8 @@ function syncFixStyle(){ $$('#fixStyleSeg button').forEach(x=>x.classList.toggle
 
 // 壁・寸法線の選択欄（選択ツールのみ）
 function updateWallPanel(){ const s=tool==='select'?selWall():null; $('#wallSel').style.display=s?'':'none'; if(!s) return;
-  $('#wallLen').textContent=fmtM(lineOf(s).len); $$('#wallThSeg button').forEach(b=>b.classList.toggle('on',b.dataset.th===s.th)); }
-$$('#wallThSeg button').forEach(b=>b.onclick=()=>{ const s=selWall(); if(s&&setWallThick(s,b.dataset.th)){ commit(); updateWallPanel(); } });
+  $('#wallLen').textContent=fmtM(lineOf(s).len); $$('#wallThSeg button, #wallThSegExt button').forEach(b=>b.classList.toggle('on',b.dataset.th===s.th)); }
+$$('#wallThSeg button, #wallThSegExt button').forEach(b=>b.onclick=()=>{ const s=selWall(); if(s&&setWallThick(s,b.dataset.th)){ commit(); updateWallPanel(); } });
 $('#wallDel').onclick=()=>doAction('del');
 function updateDimPanel(){ const d=tool==='select'&&selDim&&state.dims.includes(selDim)?selDim:null; if(!d) selDim=null; $('#dimSel').style.display=d?'':'none'; if(!d) return; $('#dimLen').textContent=fmtDim(Math.hypot(d.x2-d.x1,d.y2-d.y1)); }
 $('#dimDel').onclick=()=>doAction('del');
@@ -1919,7 +1998,7 @@ $$('#exportMenu button').forEach(b=>b.onclick=()=>{ closeExportMenu(); const k=b
   if(k==='all') saveJpeg();
   else if(k==='view') saveJpeg({x1:view.x,y1:view.y,x2:view.x+W/view.z,y2:view.y+H/view.z});
   else setExportPick(true); });
-function syncPanels(){ $$('#areaAllSeg button').forEach(x=>x.classList.toggle('on',x.dataset.a===state.areaMode)); $$('#thickSeg button').forEach(x=>x.classList.toggle('on',x.dataset.th===state.thick)); $$('#angleSeg button').forEach(x=>x.classList.toggle('on',x.dataset.ang===state.angle)); $('#joMode').value=state.joMode; $('#dimUnit').value=state.dimUnit; updateGridPanel(); $('#freePlace').checked=state.freePlace; $('#textSnap').checked=state.textSnap; syncFixStyle(); updatePanels(); }
+function syncPanels(){ $$('#areaAllSeg button').forEach(x=>x.classList.toggle('on',x.dataset.a===state.areaMode)); $$('#thickSeg button, #thickSegExt button').forEach(x=>x.classList.toggle('on',x.dataset.th===state.thick)); $$('#angleSeg button').forEach(x=>x.classList.toggle('on',x.dataset.ang===state.angle)); $('#joMode').value=state.joMode; $('#dimUnit').value=state.dimUnit; updateGridPanel(); $('#freePlace').checked=state.freePlace; $('#textSnap').checked=state.textSnap; syncFixStyle(); updatePanels(); }
 
 // ===== 起動 =====
 // オフライン対応：Web サイトとして開いたとき（http/https）だけ sw.js を登録する。ファイルを直接開いた場合や、埋め込み表示で登録できない場合は何もしない
