@@ -94,6 +94,8 @@ kbd{font:11px ui-monospace,monospace;background:#F0F2F5;border:1px solid var(--l
 .menu button{background:#fff;border:0;text-align:left;padding:9px 10px;border-radius:7px}
 .menu button:hover{background:#EEF2F7}
 .menu button small{display:block;color:var(--muted);font-size:11px;margin-top:2px}
+.menu .menuopt{display:block;padding:9px 10px;border-top:1px solid var(--line);margin-top:4px;font-size:13px;cursor:pointer}
+.menu .menuopt small{display:block;color:var(--muted);font-size:11px;margin:2px 0 0 22px}
 @media (max-width:900px){
   body{grid-template-rows:44px 1fr}
   main{grid-template-columns:1fr;grid-template-rows:1fr auto auto 66px}
@@ -127,6 +129,7 @@ kbd{font:11px ui-monospace,monospace;background:#F0F2F5;border:1px solid var(--l
   <button data-range="all">図面全体<small>描いたものがすべて入る範囲（余白付き）</small></button>
   <button data-range="view">今見えている範囲<small>画面に表示している範囲そのまま</small></button>
   <button data-range="pick">範囲をドラッグで指定<small>図面の上で四角く囲んだ範囲だけ</small></button>
+  <label class="menuopt"><input type="checkbox" id="exportSnap"> 指定する範囲をグリッドに合わせる<small>Alt を押している間は一時的に逆になります</small></label>
 </div>
 <main>
   <nav class="rail" id="rail">
@@ -1384,7 +1387,7 @@ cv.addEventListener('pointerdown',e=>{
   if(pointers.size===2){ if(drag&&lastSnap!==snap()){ applySnap(lastSnap); updatePanels(); } drag=null; preview=null; hover=null; const p=[...pointers.values()]; pinch={d:Math.hypot(p[0][0]-p[1][0],p[0][1]-p[1][1]),c:[(p[0][0]+p[1][0])/2,(p[0][1]+p[1][1])/2],view:{...view}}; return; }
   const w=toWorld(e.offsetX,e.offsetY);
   // 画面移動：右ボタン・ホイールボタンのドラッグ、Space＋ドラッグ、移動ツール
-  if(exportPick&&e.button===0){ drag={mode:'exportRect',a:w,b:w}; render(); return; }
+  if(exportPick&&e.button===0){ const q=expPt(w,e.altKey); drag={mode:'exportRect',a:q,b:q}; render(); return; }
   if(e.button===2||e.button===1||space||tool==='pan'){ drag={mode:'pan',sx:e.offsetX,sy:e.offsetY,vx:view.x,vy:view.y}; hover=null; cv.style.cursor='grabbing'; return; }
   if(e.button!==0) return;
   altDown=e.altKey; shiftDown=e.shiftKey;
@@ -1444,7 +1447,7 @@ cv.addEventListener('pointermove',e=>{
     render(); return; }
   switch(drag.mode){
     case 'pan': view.x=drag.vx-(e.offsetX-drag.sx)/view.z; view.y=drag.vy-(e.offsetY-drag.sy)/view.z; break;
-    case 'exportRect': drag.b=w; break;
+    case 'exportRect': drag.b=expPt(w,e.altKey); break;
     case 'marquee': drag.b=w; if(Math.hypot(e.offsetX-drag.sx,e.offsetY-drag.sy)>4) drag.moved=true; break;
     case 'room': if(Math.hypot(e.offsetX-drag.sx,e.offsetY-drag.sy)>6) drag.moved=true; drag.b=snapCorner(w); break;
     case 'roomVert': { const q=snapCorner(w); drag.rm.poly[drag.i]=q; drag.moved=true; break; }
@@ -1495,7 +1498,7 @@ function endPointer(e){
     case 'marquee': if(d.moved){ selectInRect({x1:Math.min(d.a[0],w[0]),y1:Math.min(d.a[1],w[1]),x2:Math.max(d.a[0],w[0]),y2:Math.max(d.a[1],w[1])}); }
       else { if(shapeAt(w)) selectRoomAt(w); } updatePanels(); break;
     case 'moveMulti': if(d.moved){ applyMultiMove(d,d.dx,d.dy,true); commit(); } updatePanels(); break;
-    case 'exportRect': { const r={x1:Math.min(d.a[0],w[0]),y1:Math.min(d.a[1],w[1]),x2:Math.max(d.a[0],w[0]),y2:Math.max(d.a[1],w[1])};
+    case 'exportRect': { const q=expPt(w,e.altKey), r={x1:Math.min(d.a[0],q[0]),y1:Math.min(d.a[1],q[1]),x2:Math.max(d.a[0],q[0]),y2:Math.max(d.a[1],q[1])};
       if(r.x2-r.x1<200||r.y2-r.y1<200){ setStatus('範囲が小さすぎます。もう一度ドラッグで囲んでください（Esc で中止）'); break; }
       setExportPick(false); saveJpeg(r); break; }
     case 'resizeFix': if(d.moved) commit(); updateFixPanel(); break;
@@ -1902,11 +1905,16 @@ async function saveJpeg(rect){
   exportImgBlob(async bl=>{ try{ const w=await h.createWritable(); await w.write(bl); await w.close(); setStatus('「'+h.name+'」に書き出しました'); }catch(e){ alert('書き出せませんでした'); } },rect); }
 // 書き出し範囲のメニュー（ヘッダーは横スクロールするので、メニューは body 直下に fixed で出す）
 let exportPick=false;
+// 書き出す範囲をドラッグで指定するとき、角をグリッドに合わせるか（このブラウザに覚える。Alt で一時的に逆）
+let exportSnap=false; try{ exportSnap=localStorage.getItem('madori-export-snap')==='1'; }catch(e){}
+$('#exportSnap').checked=exportSnap;
+$('#exportSnap').onchange=e=>{ exportSnap=e.target.checked; try{ localStorage.setItem('madori-export-snap',exportSnap?'1':'0'); }catch(err){} };
+function expPt(w,alt){ return exportSnap!==!!alt?[snapV(w[0]),snapV(w[1])]:w; }
 function closeExportMenu(){ $('#exportMenu').style.display='none'; }
 $('#exportImg').onclick=e=>{ e.stopPropagation(); const m=$('#exportMenu'); if(m.style.display==='flex'){ closeExportMenu(); return; }
   const r=$('#exportImg').getBoundingClientRect(); m.style.display='flex'; m.style.top=(r.bottom+6)+'px'; m.style.left=Math.max(8,Math.min(r.right-m.offsetWidth,innerWidth-m.offsetWidth-8))+'px'; };
 document.addEventListener('pointerdown',e=>{ if(!e.target.closest('#exportMenu')&&e.target.id!=='exportImg') closeExportMenu(); });
-function setExportPick(on){ exportPick=on; cv.style.cursor=on?'crosshair':toolCursor(tool); setStatus(on?'書き出す範囲をドラッグで囲んでください（Esc で中止）':hintOf(tool)); render(); }
+function setExportPick(on){ exportPick=on; cv.style.cursor=on?'crosshair':toolCursor(tool); setStatus(on?'書き出す範囲をドラッグで囲んでください（'+(exportSnap?'グリッドに合わせます。':'')+'Esc で中止）':hintOf(tool)); render(); }
 $$('#exportMenu button').forEach(b=>b.onclick=()=>{ closeExportMenu(); const k=b.dataset.range;
   if(k==='all') saveJpeg();
   else if(k==='view') saveJpeg({x1:view.x,y1:view.y,x2:view.x+W/view.z,y2:view.y+H/view.z});
