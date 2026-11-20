@@ -306,8 +306,9 @@ kbd{font:11px ui-monospace,monospace;background:#F0F2F5;border:1px solid var(--l
         </div>
         <div id="fixOpts" style="display:none">
           <h3>コンロ</h3>
+          <p class="hint" id="hobHint">「なし」にするとコンロを描きません。</p>
           <div class="seg" id="hobSeg"><button data-hob="gas">ガス</button><button data-hob="ih">IH</button></div>
-          <div class="seg" id="burnerSeg"><button data-n="1">1口</button><button data-n="2">2口</button><button data-n="3">3口</button><button data-n="4">4口</button></div>
+          <div class="seg" id="burnerSeg"><button data-n="0">なし</button><button data-n="1">1口</button><button data-n="2">2口</button><button data-n="3">3口</button><button data-n="4">4口</button></div>
           <label class="row"><span><input type="checkbox" id="fixDw"> 食洗機（シンク横に破線）</span></label>
         </div>
         <h3>重なり順</h3>
@@ -517,20 +518,23 @@ function ihZone(c,cx,cy,r){ circ(c,cx,cy,r,{thin:true}); circ(c,cx,cy,r*0.62,{th
 // 口の位置 [u（幅方向）, v（奥行き方向：0＝奥・1＝手前）, 大きさ]。3 口は手前に左右 2 口、奥の中央に小さめの 1 口
 const HOB_POS={1:[[0.5,0.5,1.3]],2:[[0.28,0.5,1.05],[0.72,0.5,1.05]],3:[[0.27,0.68,1],[0.73,0.68,1],[0.5,0.3,0.85]],4:[[0.27,0.3,0.95],[0.73,0.3,0.95],[0.27,0.72,0.85],[0.73,0.72,0.85]]};
 // near=true は、立つ側（手前）が y（縦長なら x）の小さい側のとき（対面・アイランド・II 型のコンロ側）
-function hob(c,x,y,w,h,n=3,ih=false,near=false){ n=clamp(n|0||3,1,4); const mono=FS.k===FIXCOL.mono; box(c,x,y,w,h,{r:20,fill:ih&&!mono?'dark':'body',thin:true}); const vert=h>w, r=Math.min(w,h)*(n===2?0.24:0.2);
+function hob(c,x,y,w,h,n=3,ih=false,near=false){ if(n===0) return;   // 口数 0＝コンロなし
+  n=clamp(n|0||3,1,4); const mono=FS.k===FIXCOL.mono; box(c,x,y,w,h,{r:20,fill:ih&&!mono?'dark':'body',thin:true}); const vert=h>w, r=Math.min(w,h)*(n===2?0.24:0.2);
   for(const [u,v0,k] of HOB_POS[n]){ const v=near?1-v0:v0, cx=vert?x+w*v:x+w*u, cy=vert?y+h*u:y+h*v; if(ih){ const keep=FS.k; if(!mono) FS={...FS,k:{...keep,thin:'#C9CED6'}}; ihZone(c,cx,cy,r*k); FS={...FS,k:keep}; } else burner(c,cx,cy,r*k); } }
 // キッチンのオプション（設備ごと）：口数 burners、コンロの種類 hob（gas / ih）、食洗機 dw
-const kopt=(f,n=3)=>({n:(f&&f.burners)||n, ih:!!(f&&f.hob==='ih'), dw:!!(f&&f.dw)});
+const kopt=(f,n=3)=>({n:(f&&f.burners!=null)?f.burners:n, ih:!!(f&&f.hob==='ih'), dw:!!(f&&f.dw)});
 // 食洗機（シンク横の破線）
 const dishwasher=(c,x,y,w,h)=>box(c,x,y,w,h,{r:15,dash:true,thin:true});
 // コンロ台の幅（4 口は広め）
 const hobW=(o,max)=>Math.min(o.n===4?750:o.n===1?350:600,max);
 // I 型の天板（壁付け）：二重線の天板・シンク・水栓・食洗機・コンロ
-function kitchenI(c,w,h,f,near=false){ const o=kopt(f); box(c,0,0,w,h,{fill:'top'}); box(c,25,25,w-50,h-50,{thin:true});
+function kitchenI(c,w,h,f,near=false,defN=3){ const o=kopt(f,defN); box(c,0,0,w,h,{fill:'top'}); box(c,25,25,w-50,h-50,{thin:true});
   const sw=Math.min(800,w*0.3), sx=Math.max(120,w*0.16); sink(c,sx,near?h*0.18:h*0.22,sw,h*0.6); circ(c,sx+sw/2,near?h*0.88:h*0.12,22,{thin:true});   // 水栓はシンクの奥（対面では腰壁側）
   const hw=hobW(o,w*0.28), hx=w-hw-Math.min(150,w*0.06);
   if(o.dw&&hx-(sx+sw)>=420) dishwasher(c,sx+sw+40,h*0.16,Math.min(450,hx-(sx+sw)-80),h*0.68);
   if(w>=1400) hob(c,hx,h*0.14,hw,h*0.72,o.n,o.ih,near); }
+// 組み合わせ用の部品（シンク台・コンロ台・調理台）：天板だけを描き、並べたり回したりして好きな形にする。奥（y=0）が壁側
+function counterTop(c,w,h){ box(c,0,0,w,h,{fill:'top'}); }
 
 // --- 家具
 // 椅子：中心 cx,cy、幅 cw・奥行き cd、背もたれは ang の向き（0＝上）
@@ -650,7 +654,13 @@ const FIX = {
     {id:'island',name:'アイランド',w:2550,h:1000,opts:true,presets:[[2100,1000],[2550,1000],[2700,1050]],
       draw(c,w,h,f){ const o=kopt(f); box(c,0,0,w,h,{r:40,fill:'top'}); line(c,0,h*0.7,w,h*0.7,{thin:true,dash:true}); const sw=Math.min(800,w*0.3); sink(c,w*0.14,h*0.13,sw,h*0.45);
         if(o.dw) dishwasher(c,w*0.14+sw+40,h*0.1,Math.min(450,w*0.14),h*0.5); const hw=hobW(o,w*0.28); hob(c,w*0.88-hw,h*0.1,hw,h*0.5,o.n,o.ih,true); }},
-    {id:'mini',name:'ミニキッチン',w:1200,h:600,opts:true,presets:[[900,550],[1050,600],[1200,600]],
+    {id:'nohob',name:'I型（コンロなし）',w:1800,h:650,opts:true,defN:0,presets:[[1200,650],[1500,650],[1800,650],[2100,650]],draw:(c,w,h,f)=>kitchenI(c,w,h,f,false,0)},
+    {id:'sinkU',name:'シンク台（部品）',w:900,h:650,presets:[[800,650],[900,650],[1200,650]],
+      draw(c,w,h){ counterTop(c,w,h); const sw=Math.min(800,w-120), sx=(w-sw)/2; sink(c,sx,h*0.22,sw,h*0.6); circ(c,w/2,h*0.12,22,{thin:true}); }},
+    {id:'hobU',name:'コンロ台（部品）',w:750,h:650,opts:true,presets:[[600,650],[750,650],[900,650]],
+      draw(c,w,h,f){ const o=kopt(f); counterTop(c,w,h); const hw=Math.min(w-80,hobW(o,w)); hob(c,(w-hw)/2,h*0.14,hw,h*0.72,o.n,o.ih); }},
+    {id:'counterU',name:'調理台（部品）',w:900,h:650,presets:[[450,650],[600,650],[900,650]],draw:(c,w,h)=>counterTop(c,w,h)},
+    {id:'mini',name:'ミニキッチン',w:1200,h:600,opts:true,defN:1,presets:[[900,550],[1050,600],[1200,600]],
       draw(c,w,h,f){ const o=kopt(f,1); box(c,0,0,w,h,{fill:'top'}); sink(c,w*0.08,h*0.22,w*0.44,h*0.6); hob(c,w*0.6,h*0.16,w*0.32,h*0.68,o.n,o.ih); }}]},
   fridge:{name:'冷蔵庫',cat:'kitchen',legacy:'one',vars:[
     {id:'place',name:'置場（破線）',w:700,h:700,presets:[[600,650],[700,700],[800,750]],draw(c,w,h){ box(c,0,0,w,h,{dash:true}); }},
@@ -1780,7 +1790,7 @@ function updateFixPanel(){ const f=selFix&&state.fixtures.includes(selFix)?selFi
     else { const tr=Math.min(...sp.flights.map(x=>x.tread)), bad=sp.riser>230||tr<150, tn=sp.turn>1?sp.turn+'段（回り段）':'踊り場';
     $('#stairInfo').innerHTML=(sp.mode==='auto'?'自動：':'')+(two?sp.flights[0].n+'段＋'+tn+'＋'+sp.flights[1].n+'段':sp.flights[0].n+'段')+'＝合計 '+sp.steps+'段'+'<br>踏み面 約 '+Math.round(tr)+'mm'+(v.id==='spiral'?'（柱の面から 300mm の位置）':'')+' ／ 蹴上げ 約 '+Math.round(sp.riser)+'mm'
       +(bad?'<br><b style="color:#A5262C">住宅の階段の目安（蹴上げ 230mm 以下・踏み面 150mm 以上）を外れています</b>':''); } }
-  $('#fixOpts').style.display=v.opts?'':'none'; if(v.opts){ const o=kopt(f,v.id==='mini'?1:3); $$('#hobSeg button').forEach(b=>b.classList.toggle('on',(b.dataset.hob==='ih')===o.ih)); $$('#burnerSeg button').forEach(b=>b.classList.toggle('on',+b.dataset.n===o.n)); $('#fixDw').checked=o.dw; }
+  $('#fixOpts').style.display=v.opts?'':'none'; if(v.opts){ const o=kopt(f,v.defN??3); $('#fixDw').closest('label').style.display=v.id==='hobU'?'none':''; $$('#hobSeg button').forEach(b=>b.classList.toggle('on',(b.dataset.hob==='ih')===o.ih)); $$('#burnerSeg button').forEach(b=>b.classList.toggle('on',+b.dataset.n===o.n)); $('#fixDw').checked=o.dw; }
   const el=$('#fixPresets'); el.innerHTML=''; for(const [pw,ph,label] of (v.presets||[])){ const b=document.createElement('button'); b.textContent=label||(pw+'×'+ph); b.classList.toggle('on',pw===w&&ph===h); b.onclick=()=>{ resizeKeepCenter(f,pw,ph); commit(); updateFixPanel(); }; el.appendChild(b); } }
 const fixDim=v=>clamp(Math.round((+v||0)/10)*10,100,6000);
 // 中心で置く設備（柱）は、サイズを変えても中心を動かさない
